@@ -18,7 +18,6 @@ Deno.serve(async (req) => {
 
   try {
     const { session_id } = await req.json();
-    console.log('Summarizing session:', session_id);
 
     const { data: orders, error: ordersError } = await supabase
     .from('orders')
@@ -33,7 +32,6 @@ Deno.serve(async (req) => {
     });
   }
 
-  console.log('Found orders:', orders);
 
   if (!orders || orders.length === 0) {
     return new Response(JSON.stringify({ error: 'No orders found for this session.' }), {
@@ -51,12 +49,25 @@ Deno.serve(async (req) => {
     return new Date(a.last_assigned_at).getTime() - new Date(b.last_assigned_at).getTime();
   });
 
-  const assignee = users[0];
+  // Find assignee, but retry if Vijay is selected
+  let assignee = users[0];
+  let attempts = 0;
+  const maxAttempts = users.length; // Prevent infinite loop
+
+  while (assignee.name.toLowerCase() === 'vijay' && attempts < maxAttempts) {
+    attempts++;
+    // Move Vijay to the end of the list and try again
+    const vijayIndex = users.findIndex(user => user.name.toLowerCase() === 'vijay');
+    if (vijayIndex !== -1) {
+      const vijay = users.splice(vijayIndex, 1)[0];
+      users.push(vijay);
+    }
+    assignee = users[0];
+  }
 
   // Update last order details for each user
   for (const order of orders) {
     if (order.user_id) {
-      console.log(`Updating user ${order.user_id} with drink ${order.drink_type} and sugar ${order.sugar_level}`);
       const { error } = await supabase
         .from('users')
         .update({
