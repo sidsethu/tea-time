@@ -3,6 +3,7 @@ CREATE TABLE users (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   name TEXT NOT NULL,
   last_assigned_at TIMESTAMPTZ,
+  drinks_since_last_assigned INTEGER NOT NULL DEFAULT 0,
   last_ordered_drink TEXT,
   last_sugar_level TEXT,
   drink_count INTEGER DEFAULT 0

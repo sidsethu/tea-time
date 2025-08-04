@@ -1,0 +1,26 @@
+**Phase 1: Core Functionality**
+
+*   **Step 1: Project Initialization and Setup:** Create a new React (Vite + TypeScript) project, and install/configure TailwindCSS and the Supabase client library.
+*   **Step 2: Supabase Backend Setup:** Define and create the `users`, `sessions`, and `orders` tables in the Supabase database according to the specified schema.
+*   **Step 3: Implement the Landing Page:** Build the initial UI that checks for an active session. If none exists, it will show a "Start Tea Time" button which, when clicked, creates a new session in the backend.
+*   **Step 4: Build the Order Submission Form:** Create the main form for users to select their name, drink, and sugar preference, and submit their order to the `orders` table.
+*   **Step 5: Implement Real-time Updates:** Use Supabase's real-time subscriptions to ensure the UI (like the submission counter) updates instantly for all users as orders are placed.
+*   **Step 6: Implement Session Summarization:** Add the "Summarize Tea Time" button and the confirmation modal. Implement the core logic (preferably in a Supabase Edge Function) to perform the fair rotation, update the user's `last_assigned_at` timestamp, and mark the session as "completed".
+*   **Step 7: Create the Final Summary Screen:** Design the component that displays the final results: who is assigned to get the tea and a detailed summary of all the orders.
+
+**Phase 2: Robustness and UX**
+
+*   **Step 8: Implement Edge Case Handling:** Add logic to prevent duplicate name submissions, handle simultaneous actions gracefully (using transactions), and manage abandoned sessions (e.g., with a timeout).
+*   **Step 9: Styling and Responsive Design:** Apply a clean and consistent design using TailwindCSS, ensuring the app is fully responsive and works well on both desktop and mobile devices.
+
+**Phase 3: Optional Enhancements**
+
+*   **Step 10: Implement 'Excuse Me Today' Feature:** Add a toggle to the order form that allows a user to opt-out of being assigned for that round.
+*   **Step 11: Create the History Page:** Build a new `/history` route that displays the details of the last 5 completed tea sessions.
+*   **Step 12: PWA Configuration:** Set up the application as a Progressive Web App with a manifest file and service worker to allow for installation on mobile devices.
+*   **Step 13: Remember User's Name with LocalStorage:** Use `localStorage` to remember a user's name, pre-selecting it for them on their next visit.
+
+**Phase 4: Finalization**
+
+*   **Step 14: Comprehensive Testing:** Write unit and end-to-end tests to ensure all features, especially the rotation logic and real-time updates, are working correctly.
+*   **Step 15: Deployment to Vercel:** Deploy the final, tested application to Vercel, configuring all necessary environment variables.

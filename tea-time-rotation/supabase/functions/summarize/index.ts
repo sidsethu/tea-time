@@ -1,3 +1,5 @@
+/// <reference types="https://deno.land/x/service_worker@0.1.0/lib.d.ts" />
+
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const supabase = createClient(
@@ -18,7 +20,6 @@ Deno.serve(async (req) => {
 
   try {
     const { session_id } = await req.json();
-    console.log('Summarizing session:', session_id);
 
     const { data: orders, error: ordersError } = await supabase
     .from('orders')
@@ -33,7 +34,6 @@ Deno.serve(async (req) => {
     });
   }
 
-  console.log('Found orders:', orders);
 
   if (!orders || orders.length === 0) {
     return new Response(JSON.stringify({ error: 'No orders found for this session.' }), {
@@ -44,26 +44,47 @@ Deno.serve(async (req) => {
 
   const users = orders.map(order => order.users);
 
-  // Sort users by last_assigned_at, with nulls first
+  // Sort by drinks_since_last_assigned (desc) and then by last_assigned_at (asc)
   users.sort((a, b) => {
+    if (b.drinks_since_last_assigned !== a.drinks_since_last_assigned) {
+      return b.drinks_since_last_assigned - a.drinks_since_last_assigned;
+    }
     if (a.last_assigned_at === null) return -1;
     if (b.last_assigned_at === null) return 1;
     return new Date(a.last_assigned_at).getTime() - new Date(b.last_assigned_at).getTime();
   });
 
-  const assignee = users[0];
+  // Find assignee, but retry if Vijay is selected
+  let assignee = users[0];
+  let attempts = 0;
+  const maxAttempts = users.length; // Prevent infinite loop
 
-  // Update last order details for each user
+  while (assignee.name.toLowerCase() === 'vijay' && attempts < maxAttempts) {
+    attempts++;
+    // Move Vijay to the end of the list and try again
+    const vijayIndex = users.findIndex(user => user.name.toLowerCase() === 'vijay');
+    if (vijayIndex !== -1) {
+      const vijay = users.splice(vijayIndex, 1)[0];
+      users.push(vijay);
+    }
+    assignee = users[0];
+  }
+
+  // Update last order details and drinks_since_last_assigned for each user
   for (const order of orders) {
     if (order.user_id) {
-      console.log(`Updating user ${order.user_id} with drink ${order.drink_type} and sugar ${order.sugar_level}`);
+      const isAssignee = order.user_id === assignee.id;
+      const updateData = {
+        last_ordered_drink: order.drink_type,
+        last_sugar_level: order.sugar_level,
+        drinks_since_last_assigned: isAssignee ? 0 : (order.users.drinks_since_last_assigned || 0) + 1,
+      };
+
       const { error } = await supabase
         .from('users')
-        .update({
-          last_ordered_drink: order.drink_type,
-          last_sugar_level: order.sugar_level,
-        })
+        .update(updateData)
         .eq('id', order.user_id);
+
       if (error) {
         console.error(`Error updating user ${order.user_id}:`, error);
       }
