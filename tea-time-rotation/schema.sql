@@ -3,9 +3,9 @@ CREATE TABLE users (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   name TEXT NOT NULL,
   last_assigned_at TIMESTAMPTZ,
-  drinks_since_last_assigned INTEGER NOT NULL DEFAULT 0,
   last_ordered_drink TEXT,
   last_sugar_level TEXT,
+  total_drinks_bought INTEGER DEFAULT 0,
   drink_count INTEGER DEFAULT 0
 );
 
@@ -16,7 +16,8 @@ CREATE TABLE sessions (
   started_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   ended_at TIMESTAMPTZ,
   status session_status NOT NULL DEFAULT 'active',
-  assignee_name TEXT
+  assignee_name TEXT,
+  total_drinks_in_session INTEGER DEFAULT 0
 );
 
 -- Add a unique index to ensure only one active session exists at a time
@@ -56,6 +57,16 @@ INSERT INTO users (name) VALUES
   ('Swami'),
   ('Venkatesh'),
   ('Vijay');
+
+-- Create a function to increment the total_drinks_bought
+CREATE OR REPLACE FUNCTION increment_total_drinks_bought(p_user_id UUID, p_amount INTEGER)
+RETURNS void AS $$
+BEGIN
+  UPDATE users
+  SET total_drinks_bought = total_drinks_bought + p_amount
+  WHERE id = p_user_id;
+END;
+$$ LANGUAGE plpgsql;
 
 -- Create a function to increment the drink_count
 CREATE OR REPLACE FUNCTION increment_drink_count(user_id UUID)
