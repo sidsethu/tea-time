@@ -27,6 +27,7 @@ function App() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [lastAssignee, setLastAssignee] = useState<string | null>(null);
+  const [totalSessions, setTotalSessions] = useState(0);
   const { isOpen, config, onConfirm, closeModal, showError, showConfirm } = useModal();
 
   useEffect(() => {
@@ -40,6 +41,24 @@ function App() {
     };
 
     const fetchSession = async () => {
+      const { count } = await supabase
+        .from('sessions')
+        .select('*', { count: 'exact', head: true });
+      
+      if (count) setTotalSessions(count);
+
+      const { data: lastSession } = await supabase
+        .from('sessions')
+        .select('assignee_name')
+        .eq('status', 'completed')
+        .order('ended_at', { ascending: false })
+        .limit(1)
+        .single();
+
+      if (lastSession) {
+        setLastAssignee(lastSession.assignee_name);
+      }
+
       // First, try to find an active session
       const { data: sessionData, error } = await supabase
         .from('sessions')
@@ -61,7 +80,6 @@ function App() {
         setSession(completedData);
         if (completedData) {
           fetchAllData(completedData);
-          setLastAssignee(completedData.assignee_name);
         }
       } else {
         setSession(sessionData);
@@ -223,19 +241,16 @@ function App() {
                     <p className="text-gray-700 text-base sm:text-lg font-medium">Gather everyone and start brewing memories!</p>
                   </div>
                   
-                  {/* Features Preview */}
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 mt-6">
-                    <div className="bg-white/80 border border-gray-200 rounded-xl p-3 sm:p-4">
-                      <div className="text-2xl mb-2">👥</div>
-                      <div className="text-sm font-semibold text-gray-800">Team Orders</div>
-                    </div>
-                    <div className="bg-white/80 border border-gray-200 rounded-xl p-3 sm:p-4">
-                      <div className="text-2xl mb-2">🎯</div>
-                      <div className="text-sm font-semibold text-gray-800">Fair Assignment</div>
-                    </div>
-                    <div className="bg-white/80 border border-gray-200 rounded-xl p-3 sm:p-4">
-                      <div className="text-2xl mb-2">⚡</div>
-                      <div className="text-sm font-semibold text-gray-800">Real-time Updates</div>
+                  {/* Stats */}
+                  <div className="mt-6 bg-white/80 border border-gray-200 rounded-xl p-4">
+                    <h3 className="text-lg font-semibold text-gray-800 mb-2">Session Stats</h3>
+                    <div className="text-left text-gray-600 space-y-1">
+                      {totalSessions > 0 && (
+                        <p>📈 Total Sessions: <strong>{totalSessions}</strong></p>
+                      )}
+                      {lastAssignee && (
+                        <p>🏆 Last Sponsor: <strong>{lastAssignee}</strong></p>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -250,12 +265,6 @@ function App() {
                   </span>
                   <div className="absolute inset-0 bg-gradient-to-r from-green-400 to-green-500 transform scale-x-0 group-hover:scale-x-100 transition-transform duration-300 origin-left"></div>
                 </button>
-
-                {lastAssignee && (
-                  <div className="mt-4 text-center text-gray-600">
-                    Last Session Sponsored By: <strong>{lastAssignee}</strong>
-                  </div>
-                )}
               </div>
             )}
             
