@@ -5,6 +5,10 @@ import Summary from './components/Summary';
 import DangerZone from './components/DangerZone';
 import Modal from './components/ui/Modal';
 import { useModal } from './hooks/useModal';
+import AddUserModal from './components/AddUserModal';
+import { useAddUserModal } from './hooks/useAddUserModal';
+import PinModal from './components/ui/PinModal';
+import { usePinModal } from './hooks/usePinModal';
 
 interface Session {
   id: string;
@@ -29,6 +33,9 @@ function App() {
   const [lastAssignee, setLastAssignee] = useState<string | null>(null);
   const [totalSessions, setTotalSessions] = useState(0);
   const { isOpen, config, onConfirm, closeModal, showError, showConfirm } = useModal();
+  const { isModalOpen, openModal, closeModal: closeAddUserModal } = useAddUserModal();
+  const { isPinModalOpen, onConfirm: onPinConfirm, showPinModal, closePinModal } = usePinModal();
+  const [kettleClicks, setKettleClicks] = useState(0);
 
   useEffect(() => {
     const fetchAllData = async (currentSession: Session) => {
@@ -143,6 +150,21 @@ function App() {
     setSession(data);
   };
 
+  const handleUserAdded = async () => {
+    if (session) {
+      fetchAllData(session);
+    }
+  };
+
+  const handleKettleClick = () => {
+    const newClicks = kettleClicks + 1;
+    setKettleClicks(newClicks);
+    if (newClicks >= 5) {
+      openModal();
+      setKettleClicks(0); // Reset after opening
+    }
+  };
+
   const handleSummarizeSession = async () => {
     if (!session) return;
 
@@ -181,6 +203,57 @@ function App() {
     );
   };
 
+  const handleAbandonSession = async () => {
+    if (!session) return;
+
+    showPinModal(async () => {
+      try {
+        // First, delete all orders associated with the session
+        const { error: deleteOrdersError } = await supabase
+          .from('orders')
+          .delete()
+          .eq('session_id', session.id);
+
+        if (deleteOrdersError) {
+          throw deleteOrdersError;
+        }
+
+        // Then, delete the session itself
+        const { error: deleteSessionError } = await supabase
+          .from('sessions')
+          .delete()
+          .eq('id', session.id);
+
+        if (deleteSessionError) {
+          throw deleteSessionError;
+        }
+
+        setSession(null);
+        setOrders([]);
+      } catch (err) {
+        console.error('Unexpected error during abandon:', err);
+        showError('Unexpected Error', 'Something went wrong. Please try again.');
+      }
+    });
+  };
+
+  const handleShowLastSession = async () => {
+    const { data: lastSession } = await supabase
+      .from('sessions')
+      .select('*, assignee_name')
+      .eq('status', 'completed')
+      .order('ended_at', { ascending: false })
+      .limit(1)
+      .single();
+
+    if (lastSession) {
+      setSession(lastSession);
+      fetchAllData(lastSession);
+    } else {
+      showError('No Sessions Found', 'There are no completed sessions to display.');
+    }
+  };
+
   return (
     <div className="min-h-screen relative overflow-hidden">
       {/* Enhanced Background for Better Visibility */}
@@ -199,7 +272,7 @@ function App() {
       <div className="relative z-10 min-h-screen flex flex-col items-center justify-center p-3 sm:p-6 lg:p-8">
         {/* Enhanced Mobile-First Logo/Header Section */}
         <div className="text-center mb-6 sm:mb-8 animate-fade-in px-4">
-          <div className="relative inline-block">
+          <div className="relative inline-block" onClick={handleKettleClick} style={{ cursor: 'pointer' }}>
             <div className="absolute -inset-4 bg-gradient-to-r from-primary-500 to-chai-500 rounded-full blur-lg opacity-20 animate-pulse-slow"></div>
             <div className="relative text-6xl sm:text-7xl lg:text-8xl animate-bounce-subtle">🫖</div>
           </div>
@@ -255,22 +328,34 @@ function App() {
                   </div>
                 </div>
                 
-                <button
-                  onClick={handleStartSession}
-                  className="btn-primary text-lg sm:text-xl font-bold px-6 sm:px-8 py-3 sm:py-4 group relative overflow-hidden rounded-xl sm:rounded-2xl w-full max-w-xs sm:max-w-sm"
-                >
-                  <span className="relative z-10 flex items-center justify-center">
-                    <span className="mr-3 text-xl sm:text-2xl group-hover:animate-bounce">🚀</span>
-                    <span className="text-base sm:text-lg">Start Tea Time</span>
-                  </span>
-                  <div className="absolute inset-0 bg-gradient-to-r from-green-400 to-green-500 transform scale-x-0 group-hover:scale-x-100 transition-transform duration-300 origin-left"></div>
-                </button>
+                <div className="flex flex-col items-center space-y-4">
+                  <button
+                    onClick={handleStartSession}
+                    className="btn-primary text-lg sm:text-xl font-bold px-6 sm:px-8 py-3 sm:py-4 group relative overflow-hidden rounded-xl sm:rounded-2xl w-full max-w-xs sm:max-w-sm"
+                  >
+                    <span className="relative z-10 flex items-center justify-center">
+                      <span className="mr-3 text-xl sm:text-2xl group-hover:animate-bounce">🚀</span>
+                      <span className="text-base sm:text-lg">Start Tea Time</span>
+                    </span>
+                    <div className="absolute inset-0 bg-gradient-to-r from-green-400 to-green-500 transform scale-x-0 group-hover:scale-x-100 transition-transform duration-300 origin-left"></div>
+                  </button>
+                  <button
+                    onClick={handleShowLastSession}
+                    className="btn-primary text-lg sm:text-xl font-bold px-6 sm:px-8 py-3 sm:py-4 group relative overflow-hidden rounded-xl sm:rounded-2xl w-full max-w-xs sm:max-w-sm"
+                  >
+                    <span className="relative z-10 flex items-center justify-center">
+                      <span className="mr-3 text-xl sm:text-2xl group-hover:animate-bounce">🧐</span>
+                      <span className="text-base sm:text-lg">Show Last Tea Time</span>
+                    </span>
+                    <div className="absolute inset-0 bg-gradient-to-r from-blue-400 to-blue-500 transform scale-x-0 group-hover:scale-x-100 transition-transform duration-300 origin-left"></div>
+                  </button>
+                </div>
               </div>
             )}
             
             {session && session.status === 'active' && (
               <DangerZone title="Danger Zone">
-                <div className="pt-8 flex justify-center animate-slide-up" style={{animationDelay: '0.2s'}}>
+                <div className="pt-8 flex flex-col items-center space-y-4 animate-slide-up" style={{animationDelay: '0.2s'}}>
                   <button
                     onClick={handleSummarizeSession}
                     className="btn-secondary text-lg sm:text-xl font-bold px-6 sm:px-8 py-3 sm:py-4 group relative overflow-hidden rounded-xl sm:rounded-2xl w-full max-w-xs sm:max-w-sm"
@@ -278,6 +363,15 @@ function App() {
                     <span className="relative z-10 flex items-center justify-center">
                       <span className="mr-3 text-xl sm:text-2xl group-hover:animate-pulse">📋</span>
                       <span className="text-base sm:text-lg">Summarize Tea Time</span>
+                    </span>
+                  </button>
+                  <button
+                    onClick={handleAbandonSession}
+                    className="btn-danger text-lg sm:text-xl font-bold px-6 sm:px-8 py-3 sm:py-4 group relative overflow-hidden rounded-xl sm:rounded-2xl w-full max-w-xs sm:max-w-sm"
+                  >
+                    <span className="relative z-10 flex items-center justify-center">
+                      <span className="mr-3 text-xl sm:text-2xl group-hover:animate-spin">🗑️</span>
+                      <span className="text-base sm:text-lg">Abandon Tea Time</span>
                     </span>
                   </button>
                 </div>
@@ -324,6 +418,21 @@ function App() {
           cancelText={config.cancelText}
         />
       )}
+
+      <AddUserModal
+        isOpen={isModalOpen}
+        onClose={closeAddUserModal}
+        onUserAdded={handleUserAdded}
+      />
+
+      <PinModal
+        isOpen={isPinModalOpen}
+        onClose={closePinModal}
+        onConfirm={onPinConfirm || (() => {})}
+        title="Abandon Session?"
+        message="Enter the PIN to confirm abandoning this session. This action cannot be undone."
+        correctPin="1428"
+      />
     </div>
   );
 }

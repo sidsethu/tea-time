@@ -2,6 +2,8 @@ import { useState, useEffect, useRef } from 'react';
 import { supabase } from '../supabaseClient';
 import Modal from './ui/Modal';
 import { useModal } from '../hooks/useModal';
+import AddUserModal from './AddUserModal';
+import { useAddUserModal } from '../hooks/useAddUserModal';
 
 interface User {
   id: string;
@@ -29,6 +31,8 @@ const OrderForm = ({ session, orders, users, onOrderUpdate }: OrderFormProps) =>
   const [sugarLevel, setSugarLevel] = useState('Normal');
   const [isExcused, setIsExcused] = useState(false);
   const { isOpen, config, onConfirm, closeModal, showError, showSuccess, showConfirm } = useModal();
+  const { isModalOpen, openModal, closeModal: closeAddUserModal } = useAddUserModal();
+  const [kettleClicks, setKettleClicks] = useState(0);
   const drinkSectionRef = useRef<HTMLDivElement>(null);
   const topOfPageRef = useRef<HTMLDivElement>(null);
 
@@ -101,6 +105,15 @@ const OrderForm = ({ session, orders, users, onOrderUpdate }: OrderFormProps) =>
     }, 100); // A small delay to ensure the section is rendered
   };
 
+  const handleKettleClick = () => {
+    const newClicks = kettleClicks + 1;
+    setKettleClicks(newClicks);
+    if (newClicks >= 5) {
+      openModal();
+      setKettleClicks(0); // Reset after opening
+    }
+  };
+
   const handleRevokeOrder = async () => {
     if (!selectedUser) {
       showError('Selection Required', 'Please select your name first.');
@@ -143,7 +156,7 @@ const OrderForm = ({ session, orders, users, onOrderUpdate }: OrderFormProps) =>
     <div ref={topOfPageRef} className="space-y-10">
       {/* Progress Header */}
       <div className="text-center space-y-4">
-        <div className="relative inline-block">
+        <div className="relative inline-block" onClick={handleKettleClick} style={{ cursor: 'pointer' }}>
           <div className="absolute -inset-2 bg-gradient-to-r from-secondary-400 to-matcha-400 rounded-full blur opacity-30 animate-pulse-slow"></div>
           <div className="relative w-24 h-24 mx-auto">
             <svg className="w-24 h-24 transform -rotate-90" viewBox="0 0 100 100">
@@ -400,6 +413,16 @@ const OrderForm = ({ session, orders, users, onOrderUpdate }: OrderFormProps) =>
           cancelText={config.cancelText}
         />
       )}
+
+      <AddUserModal
+        isOpen={isModalOpen}
+        onClose={closeAddUserModal}
+        onUserAdded={() => {
+          if (onOrderUpdate) {
+            onOrderUpdate();
+          }
+        }}
+      />
     </div>
   );
 };
