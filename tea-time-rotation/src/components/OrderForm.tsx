@@ -15,6 +15,8 @@ interface User {
 
 interface Order {
   user_id: string;
+  drink_type: string;
+  sugar_level: string;
 }
 
 interface OrderFormProps {
@@ -40,17 +42,23 @@ const OrderForm = ({ session, orders, users, onOrderUpdate }: OrderFormProps) =>
 
   useEffect(() => {
     if (selectedUser) {
-      const user = users.find((u) => u.id === selectedUser);
-      if (user) {
-        setDrinkType(user.last_ordered_drink || 'Tea');
-        setSugarLevel(user.last_sugar_level || 'Normal');
+      const existingOrder = orders.find((o) => o.user_id === selectedUser);
+      if (existingOrder) {
+        setDrinkType(existingOrder.drink_type || 'Tea');
+        setSugarLevel(existingOrder.sugar_level || 'Normal');
+      } else {
+        const user = users.find((u) => u.id === selectedUser);
+        if (user) {
+          setDrinkType(user.last_ordered_drink || 'Tea');
+          setSugarLevel(user.last_sugar_level || 'Normal');
+        }
       }
     } else {
       // Reset to default when no user is selected
       setDrinkType('Tea');
       setSugarLevel('Normal');
     }
-  }, [selectedUser, users]);
+  }, [selectedUser, users, orders]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -59,6 +67,11 @@ const OrderForm = ({ session, orders, users, onOrderUpdate }: OrderFormProps) =>
       return;
     }
 
+    const isUpdating = submittedUsers.includes(selectedUser);
+    if (isUpdating && !(profile?.permissions.includes('can_update_order') || profile?.id === selectedUser)) {
+      showError('Permission Denied', 'You do not have permission to update this order.');
+      return;
+    }
     
     const { error } = await supabase.from('orders').upsert(
       {
@@ -148,6 +161,11 @@ const OrderForm = ({ session, orders, users, onOrderUpdate }: OrderFormProps) =>
         }
         
         showSuccess('Order Cancelled', 'Your order has been successfully cancelled.');
+        
+        // Scroll to top after cancellation
+        setTimeout(() => {
+          topOfPageRef.current?.scrollIntoView({ behavior: 'smooth' });
+        }, 100);
       },
       'Cancel Order',
       'Keep Order'
@@ -394,24 +412,6 @@ const OrderForm = ({ session, orders, users, onOrderUpdate }: OrderFormProps) =>
                 <span className="flex items-center justify-center">
                   <span className="mr-3 text-2xl">🗑️</span>
                   Cancel My Order
-                </span>
-              </button>
-            )}
-            {hasSubmitted && (profile?.permissions.includes('can_update_order') || profile?.id === selectedUser) && (
-              <button
-                type="submit"
-                disabled={!selectedUser}
-                className={`w-full py-4 sm:py-5 px-6 text-lg sm:text-xl font-bold rounded-2xl transition-all duration-300 touch-manipulation shadow-lg hover:shadow-xl ${
-                  !selectedUser 
-                    ? 'bg-gradient-to-r from-gray-300 to-gray-400 text-gray-500 cursor-not-allowed shadow-md' 
-                    : 'bg-gradient-to-r from-blue-500 to-blue-600 text-white shadow-lg hover:from-blue-600 hover:to-blue-700 hover:scale-105 active:scale-95 ring-2 ring-blue-200 ring-offset-2'
-                }`}
-              >
-                <span className="flex items-center justify-center">
-                  <span className="mr-3 text-2xl">
-                    🔄
-                  </span>
-                  Update Order
                 </span>
               </button>
             )}

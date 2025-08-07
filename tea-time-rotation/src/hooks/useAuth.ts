@@ -65,7 +65,7 @@ export const useAuth = () => {
           ).flatMap((p) =>
             p.roles.role_permissions.map((rp) => rp.permission)
           );
-          setProfile({ id: data.id, name: data.name, roles, permissions });
+          setProfile({ id: data.id, name: data.name || 'Guest', roles, permissions });
         }
       }
     };

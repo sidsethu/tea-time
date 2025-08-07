@@ -19,6 +19,8 @@ interface Session {
 
 interface Order {
   user_id: string;
+  drink_type: string;
+  sugar_level: string;
 }
 
 interface User {
@@ -279,16 +281,14 @@ function App() {
 
   return (
     <div className="min-h-screen relative overflow-hidden">
-      <div className="absolute top-4 right-4 z-20">
-        <div className="flex items-center space-x-4">
-          <span className="text-gray-700">Welcome, {profile?.name}</span>
-          <button
-            onClick={handleLogout}
-            className="bg-red-500 hover:bg-red-700 text-white font-bold py-2 px-4 rounded"
-          >
-            Logout
-          </button>
-        </div>
+      <div className="absolute top-4 right-4 z-20 flex flex-col sm:flex-row items-end sm:items-center sm:space-x-4">
+        <span className="text-gray-700">Welcome, {profile?.name}</span>
+        <button
+          onClick={handleLogout}
+          className="bg-red-500 hover:bg-red-700 text-white font-bold py-2 px-4 rounded mt-2 sm:mt-0"
+        >
+          Logout
+        </button>
       </div>
       {/* Enhanced Background for Better Visibility */}
       <div className="absolute inset-0 bg-gradient-to-br from-white via-primary-50 to-chai-100"></div>
@@ -303,7 +303,7 @@ function App() {
       </div>
       
       {/* Enhanced Mobile-Friendly Main Content */}
-      <div className="relative z-10 min-h-screen flex flex-col items-center justify-center p-3 sm:p-6 lg:p-8">
+      <div className="relative z-10 min-h-screen flex flex-col items-center justify-center p-3 sm:p-6 lg:p-8 pt-24 sm:pt-6">
         {/* Enhanced Mobile-First Logo/Header Section */}
         <div className="text-center mb-6 sm:mb-8 animate-fade-in px-4">
           <div className="relative inline-block" onClick={handleKettleClick} style={{ cursor: 'pointer' }}>
