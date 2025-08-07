@@ -166,7 +166,7 @@ const Summary = ({ session, onNewSession }: SummaryProps) => {
                       </div>
                     </div>
                     <div className="text-right">
-                      <div className="text-2xl font-bold bg-gradient-to-r from-primary-600 to-chai-600 bg-clip-text text-transparent">
+                      <div className="text-2xl font-bold text-gray-900">
                         {total}
                       </div>
                     </div>
