@@ -4,6 +4,7 @@ import Modal from './ui/Modal';
 import { useModal } from '../hooks/useModal';
 import AddUserModal from './AddUserModal';
 import { useAddUserModal } from '../hooks/useAddUserModal';
+import { useAuth } from '../hooks/useAuth';
 
 interface User {
   id: string;
@@ -26,6 +27,7 @@ interface OrderFormProps {
 }
 
 const OrderForm = ({ session, orders, users, onOrderUpdate }: OrderFormProps) => {
+  const { profile } = useAuth();
   const [selectedUser, setSelectedUser] = useState('');
   const [drinkType, setDrinkType] = useState('Tea');
   const [sugarLevel, setSugarLevel] = useState('Normal');
@@ -383,7 +385,7 @@ const OrderForm = ({ session, orders, users, onOrderUpdate }: OrderFormProps) =>
               </span>
             </button>
             
-            {hasSubmitted && (
+            {hasSubmitted && (profile?.permissions.includes('can_cancel_order') || profile?.id === selectedUser) && (
               <button
                 type="button"
                 onClick={handleRevokeOrder}
@@ -392,6 +394,24 @@ const OrderForm = ({ session, orders, users, onOrderUpdate }: OrderFormProps) =>
                 <span className="flex items-center justify-center">
                   <span className="mr-3 text-2xl">🗑️</span>
                   Cancel My Order
+                </span>
+              </button>
+            )}
+            {hasSubmitted && (profile?.permissions.includes('can_update_order') || profile?.id === selectedUser) && (
+              <button
+                type="submit"
+                disabled={!selectedUser}
+                className={`w-full py-4 sm:py-5 px-6 text-lg sm:text-xl font-bold rounded-2xl transition-all duration-300 touch-manipulation shadow-lg hover:shadow-xl ${
+                  !selectedUser 
+                    ? 'bg-gradient-to-r from-gray-300 to-gray-400 text-gray-500 cursor-not-allowed shadow-md' 
+                    : 'bg-gradient-to-r from-blue-500 to-blue-600 text-white shadow-lg hover:from-blue-600 hover:to-blue-700 hover:scale-105 active:scale-95 ring-2 ring-blue-200 ring-offset-2'
+                }`}
+              >
+                <span className="flex items-center justify-center">
+                  <span className="mr-3 text-2xl">
+                    🔄
+                  </span>
+                  Update Order
                 </span>
               </button>
             )}

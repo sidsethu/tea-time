@@ -9,6 +9,8 @@ import AddUserModal from './components/AddUserModal';
 import { useAddUserModal } from './hooks/useAddUserModal';
 import PinModal from './components/ui/PinModal';
 import { usePinModal } from './hooks/usePinModal';
+import { useAuth } from './hooks/useAuth';
+import Auth from './components/Auth';
 
 interface Session {
   id: string;
@@ -27,6 +29,7 @@ interface User {
 }
 
 function App() {
+  const { session: authSession, profile, loading } = useAuth();
   const [session, setSession] = useState<Session | null>(null);
   const [orders, setOrders] = useState<Order[]>([]);
   const [users, setUsers] = useState<User[]>([]);
@@ -157,16 +160,21 @@ function App() {
   };
 
   const handleKettleClick = () => {
-    const newClicks = kettleClicks + 1;
-    setKettleClicks(newClicks);
-    if (newClicks >= 5) {
-      openModal();
-      setKettleClicks(0); // Reset after opening
+    if (profile?.permissions.includes('can_add_user')) {
+      const newClicks = kettleClicks + 1;
+      setKettleClicks(newClicks);
+      if (newClicks >= 5) {
+        openModal();
+        setKettleClicks(0); // Reset after opening
+      }
     }
   };
 
   const handleSummarizeSession = async () => {
-    if (!session) return;
+    if (!session || !profile?.permissions.includes('can_summarize_session')) {
+      showError('Permission Denied', 'You do not have permission to summarize the session.');
+      return;
+    }
 
     showConfirm(
       'Finalize Tea Time?',
@@ -204,7 +212,10 @@ function App() {
   };
 
   const handleAbandonSession = async () => {
-    if (!session) return;
+    if (!session || !profile?.permissions.includes('can_abandon_session')) {
+      showError('Permission Denied', 'You do not have permission to abandon the session.');
+      return;
+    }
 
     showPinModal(async () => {
       try {
@@ -254,8 +265,31 @@ function App() {
     }
   };
 
+  if (loading) {
+    return <div>Loading...</div>;
+  }
+
+  if (!authSession) {
+    return <Auth />;
+  }
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+  };
+
   return (
     <div className="min-h-screen relative overflow-hidden">
+      <div className="absolute top-4 right-4 z-20">
+        <div className="flex items-center space-x-4">
+          <span className="text-gray-700">Welcome, {profile?.name}</span>
+          <button
+            onClick={handleLogout}
+            className="bg-red-500 hover:bg-red-700 text-white font-bold py-2 px-4 rounded"
+          >
+            Logout
+          </button>
+        </div>
+      </div>
       {/* Enhanced Background for Better Visibility */}
       <div className="absolute inset-0 bg-gradient-to-br from-white via-primary-50 to-chai-100"></div>
       
