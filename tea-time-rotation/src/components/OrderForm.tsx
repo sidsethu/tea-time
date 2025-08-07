@@ -11,6 +11,7 @@ interface User {
   name: string;
   last_ordered_drink: string;
   last_sugar_level: string;
+  profile_picture_url?: string;
 }
 
 interface Order {
@@ -253,7 +254,7 @@ const OrderForm = ({ session, orders, users, onOrderUpdate }: OrderFormProps) =>
                   key={user.id}
                   type="button"
                   onClick={() => handleUserSelect(user.id)}
-                  className={`relative p-2 sm:p-3 rounded-lg text-center transition-all duration-300 border-2 min-h-[3.5rem] sm:min-h-[4rem] flex flex-col items-center justify-center touch-manipulation ${
+                  className={`relative p-2 sm:p-3 rounded-lg text-center transition-all duration-300 border-2 min-h-[5rem] sm:min-h-[6rem] flex flex-col items-center justify-center touch-manipulation ${
                     isSelected
                       ? 'bg-gradient-to-br from-green-500 to-green-600 text-white border-green-600 shadow-lg scale-105'
                       : hasOrdered
@@ -266,8 +267,12 @@ const OrderForm = ({ session, orders, users, onOrderUpdate }: OrderFormProps) =>
                       ✓
                     </div>
                   )}
-                  <div className="text-sm sm:text-base mb-1">
-                    {isSelected ? '👋' : hasOrdered ? '☕' : '😊'}
+                  <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-full flex items-center justify-center mb-1 overflow-hidden">
+                    {user.profile_picture_url ? (
+                      <img src={user.profile_picture_url} alt={user.name} className="w-full h-full object-cover" />
+                    ) : (
+                      <span className="text-lg font-bold">{user.name.charAt(0)}</span>
+                    )}
                   </div>
                   <div className={`text-xs font-semibold leading-tight text-center ${
                     isSelected ? 'text-white' : hasOrdered ? 'text-blue-800' : 'text-gray-800'
@@ -316,7 +321,6 @@ const OrderForm = ({ session, orders, users, onOrderUpdate }: OrderFormProps) =>
               { name: 'Lemon Tea', emoji: '🍋' },
               { name: 'Plain Milk', emoji: '🥛' },
               { name: 'Badam Milk', emoji: '🥛' },
-              { name: 'Fruit Juice', emoji: '🧃' },
             ].map((drink) => (
               <button
                 key={drink.name}

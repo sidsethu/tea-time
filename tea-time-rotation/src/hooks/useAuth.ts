@@ -7,6 +7,7 @@ interface Profile {
   name: string;
   roles: string[];
   permissions: string[];
+  profile_picture_url?: string;
 }
 
 export const useAuth = () => {
@@ -46,6 +47,7 @@ export const useAuth = () => {
           .select(`
             id,
             name,
+            profile_picture_url,
             roles:user_roles(roles(name)),
             permissions:user_roles(roles(role_permissions(permission)))
           `)
@@ -65,7 +67,21 @@ export const useAuth = () => {
           ).flatMap((p) =>
             p.roles.role_permissions.map((rp) => rp.permission)
           );
-          setProfile({ id: data.id, name: data.name || 'Guest', roles, permissions });
+          setProfile({ id: data.id, name: data.name || 'Guest', roles, permissions, profile_picture_url: data.profile_picture_url });
+
+          // If the profile picture URL is empty, try to update it from the user's metadata
+          if (!data.profile_picture_url && user.user_metadata?.picture) {
+            const { error: updateError } = await supabase
+              .from('users')
+              .update({ profile_picture_url: user.user_metadata.picture })
+              .eq('id', data.id);
+
+            if (updateError) {
+              console.error('Error updating profile picture:', updateError);
+            } else {
+              setProfile((prevProfile) => prevProfile ? { ...prevProfile, profile_picture_url: user.user_metadata.picture } : null);
+            }
+          }
         }
       }
     };

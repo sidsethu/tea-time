@@ -28,6 +28,7 @@ interface User {
   name: string;
   last_ordered_drink: string;
   last_sugar_level: string;
+  profile_picture_url?: string;
 }
 
 function App() {
@@ -46,7 +47,7 @@ function App() {
     const fetchAllData = async (currentSession: Session) => {
       const [ordersData, usersData] = await Promise.all([
         supabase.from('orders').select('*').eq('session_id', currentSession.id),
-        supabase.from('users').select('id, name, last_ordered_drink, last_sugar_level'),
+        supabase.from('users').select('id, name, last_ordered_drink, last_sugar_level, profile_picture_url'),
       ]);
       if (ordersData.data) setOrders(ordersData.data);
       if (usersData.data) setUsers(usersData.data);
@@ -121,7 +122,7 @@ function App() {
   const fetchAllData = async (currentSession: Session) => {
     const [ordersData, usersData] = await Promise.all([
       supabase.from('orders').select('*').eq('session_id', currentSession.id),
-      supabase.from('users').select('id, name, last_ordered_drink, last_sugar_level'),
+      supabase.from('users').select('id, name, last_ordered_drink, last_sugar_level, profile_picture_url'),
     ]);
     if (ordersData.data) setOrders(ordersData.data);
     if (usersData.data) setUsers(usersData.data);

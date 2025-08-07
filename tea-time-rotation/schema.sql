@@ -7,7 +7,8 @@ CREATE TABLE users (
   last_ordered_drink TEXT,
   last_sugar_level TEXT,
   total_drinks_bought INTEGER DEFAULT 0,
-  drink_count INTEGER DEFAULT 0
+  drink_count INTEGER DEFAULT 0,
+  profile_picture_url TEXT
 );
 
 -- Create roles and permissions tables
