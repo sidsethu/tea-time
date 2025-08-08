@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { supabase } from '../supabaseClient';
+import { useAuth } from '../hooks/useAuth';
 
 interface AddUserModalProps {
   isOpen: boolean;
@@ -11,6 +12,7 @@ const AddUserModal = ({ isOpen, onClose, onUserAdded }: AddUserModalProps) => {
   const [name, setName] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { profile } = useAuth();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -26,7 +28,7 @@ const AddUserModal = ({ isOpen, onClose, onUserAdded }: AddUserModalProps) => {
     try {
       const { data, error } = await supabase
         .from('users')
-        .insert([{ name }])
+        .insert([{ name, added_by: profile?.id ?? null }])
         .select();
 
       if (error) {

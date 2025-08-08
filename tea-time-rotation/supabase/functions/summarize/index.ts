@@ -2,17 +2,21 @@
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
-const supabase = createClient(
-  Deno.env.get('SUPABASE_URL')!,
-  Deno.env.get('SUPABASE_ANON_KEY')!
-);
-
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
 Deno.serve(async (req) => {
+  const supabase = createClient(
+    Deno.env.get('SUPABASE_URL')!,
+    Deno.env.get('SUPABASE_ANON_KEY')!,
+    {
+      global: {
+        headers: { Authorization: req.headers.get('Authorization') ?? '' },
+      },
+    },
+  );
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
@@ -89,13 +93,27 @@ Deno.serve(async (req) => {
 
   await supabase.rpc('increment_total_drinks_bought', { p_user_id: assignee.id, p_amount: orders.length });
 
+  // Resolve summarizer from auth header
+  let summarizerUserId: string | null = null;
+  const { data: authUserResult } = await supabase.auth.getUser();
+  const authUserId = authUserResult?.user?.id ?? null;
+  if (authUserId) {
+    const { data: summarizer } = await supabase
+      .from('users')
+      .select('id, name')
+      .eq('auth_user_id', authUserId)
+      .single();
+    summarizerUserId = summarizer?.id ?? null;
+  }
+
   await supabase
     .from('sessions')
     .update({ 
       status: 'completed', 
       ended_at: new Date().toISOString(), 
       assignee_name: assignee.name,
-      total_drinks_in_session: orders.length 
+      total_drinks_in_session: orders.length,
+      summarized_by: summarizerUserId,
     })
     .eq('id', session_id);
 

@@ -26,6 +26,7 @@ interface SummaryProps {
 const Summary = ({ session, onNewSession }: SummaryProps) => {
   const [orders, setOrders] = useState<Order[]>([]);
   const [assignee, setAssignee] = useState<string | null>(null);
+  const [summarizedBy, setSummarizedBy] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchOrders = async () => {
@@ -41,11 +42,21 @@ const Summary = ({ session, onNewSession }: SummaryProps) => {
     const fetchAssignee = async () => {
       const { data } = await supabase
         .from('sessions')
-        .select('assignee_name')
+        .select('assignee_name, summarized_by')
         .eq('id', session.id)
         .single();
       if (data && data.assignee_name) {
         setAssignee(data.assignee_name);
+      }
+      if (data && data.summarized_by) {
+        const { data: summarizer } = await supabase
+          .from('users')
+          .select('name')
+          .eq('id', data.summarized_by)
+          .single();
+        setSummarizedBy(summarizer?.name ?? null);
+      } else {
+        setSummarizedBy(null);
       }
     };
 
@@ -78,6 +89,12 @@ const Summary = ({ session, onNewSession }: SummaryProps) => {
     }
     return acc;
   }, {} as Record<string, string[]>);
+
+  const sortedDetailedEntries = Object.entries(detailedSummary).sort((a, b) => {
+    const nameA = a[0].split(' (')[0].toLowerCase();
+    const nameB = b[0].split(' (')[0].toLowerCase();
+    return nameA.localeCompare(nameB);
+  });
 
 
 
@@ -193,7 +210,7 @@ const Summary = ({ session, onNewSession }: SummaryProps) => {
           </h3>
           
           <div className="space-y-4 max-h-80 overflow-y-auto custom-scrollbar">
-            {Object.entries(detailedSummary).map(([drink, names], index) => (
+            {sortedDetailedEntries.map(([drink, names], index) => (
               <div 
                 key={drink} 
                 className="glass-card rounded-2xl p-4 hover:shadow-lg transition-all duration-300 animate-scale-in"
@@ -234,10 +251,13 @@ const Summary = ({ session, onNewSession }: SummaryProps) => {
           </span>
           <div className="absolute inset-0 bg-gradient-to-r from-green-400 to-green-500 transform scale-x-0 group-hover:scale-x-100 transition-transform duration-300 origin-left"></div>
         </button>
-        
-
       </div>
 
+      {summarizedBy && (
+        <div className="text-center mt-6 text-gray-600 text-sm">
+          Summarized By: <strong>{summarizedBy}</strong>
+        </div>
+      )}
 
     </div>
   );

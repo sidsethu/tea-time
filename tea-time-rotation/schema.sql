@@ -3,6 +3,8 @@ CREATE TABLE users (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   name TEXT NOT NULL,
   auth_user_id UUID UNIQUE,
+  -- New: which existing user added this user via UI
+  added_by UUID REFERENCES users(id) ON DELETE SET NULL,
   last_assigned_at TIMESTAMPTZ,
   last_ordered_drink TEXT,
   last_sugar_level TEXT,
@@ -48,7 +50,9 @@ CREATE TABLE sessions (
   ended_at TIMESTAMPTZ,
   status session_status NOT NULL DEFAULT 'active',
   assignee_name TEXT,
-  total_drinks_in_session INTEGER DEFAULT 0
+  total_drinks_in_session INTEGER DEFAULT 0,
+  -- New: which user summarized (completed) this session
+  summarized_by UUID REFERENCES users(id)
 );
 
 -- Add a unique index to ensure only one active session exists at a time
