@@ -1,177 +1,137 @@
-# 🫖 Tea Time - Premium Quali-tea Experience
+# 🫖 Tea Time Rotation
 
-> **A sophisticated tea time management application with million-dollar UI/UX that transforms team coordination into a delightful experience.**
+A lightweight, real-time team tea-time coordinator. Start a session, everyone places orders, then fairly assign who makes tea based on history. Built with React + Supabase.
 
-[![Premium UI](https://img.shields.io/badge/UI-Premium-gold)](./SETUP_GUIDE.md)
-[![React](https://img.shields.io/badge/React-19.1.0-blue)](https://reactjs.org/)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.8.3-blue)](https://www.typescriptlang.org/)
-[![Tailwind CSS](https://img.shields.io/badge/Tailwind-4.1.11-cyan)](https://tailwindcss.com/)
-[![Supabase](https://img.shields.io/badge/Supabase-Powered-green)](https://supabase.com/)
+## Features
 
-## ✨ **What Makes This Special**
+- Smart rotation: picks the assignee with the fewest total teas bought, then the least recently assigned
+- Real-time updates: orders and session state update live across clients
+- Preference memory: remembers each person’s last drink and sugar level
+- Role-based actions: guard sensitive actions (summarize, abandon, add users) with permissions
+- Polished UX: mobile-first, touch-friendly, premium styling
 
-This isn't just another tea ordering app - it's a **premium experience** that showcases enterprise-grade UI/UX design with:
+## Tech Stack
 
-- 🎨 **Glassmorphism Design Language** - Modern frosted glass effects
-- 🌈 **Sophisticated Color System** - Tea-inspired premium palette  
-- ✨ **Delightful Micro-interactions** - Every click feels satisfying
-- 📊 **Data Visualization** - Beautiful analytics and progress tracking
-- 🚀 **60fps Animations** - Smooth, hardware-accelerated transitions
-- 📱 **Pixel-Perfect Responsive** - Flawless on any device
+- Frontend: React 19, TypeScript, Vite, Tailwind CSS v4
+- Backend: Supabase (PostgreSQL, Realtime, Auth, Edge Functions)
+- Edge Functions: summarize (assignment + rollup), user-sync (auth → users sync)
 
-## 🎯 **Core Features**
+## Architecture Overview
 
-### **👥 Smart Team Management**
--   **Intelligent User Rotation**: Automatic fair assignment based on history
--   **Memory System**: Remembers everyone's drink preferences
--   **Real-time Coordination**: Live updates as team members place orders
--   **Usage Analytics**: Track who's making tea and how often
+- UI loads auth session and the current tea session
+- Realtime listeners refresh orders/sessions on database changes
+- Orders are upserted per user per session
+- Summarize finalizes a session via an edge function that computes the assignee and writes rollups
 
-### **🍵 Premium Order Experience**
--   **Visual Drink Selection**: Interactive grid with popular drink indicators
--   **Smart Preferences**: One-click sugar level selection with emoji feedback  
--   **Live Progress Tracking**: Circular progress showing team participation
--   **Instant Updates**: Real-time order modifications and cancellations
+## Getting Started
 
-### **📊 Advanced Session Management**
--   **Celebration Animations**: Confetti and success animations on completion
--   **Data Visualization**: Professional charts showing order breakdown
--   **Team Insights**: Visual analytics of who ordered what
--   **Session History**: Track completed tea time sessions
+### Prerequisites
 
-### **🎨 Million-Dollar UI Features**
--   **Floating Animations**: Subtle tea leaves and teapot animations
--   **Gradient Magic**: Multi-layer gradients throughout the interface
--   **Glass Effects**: Premium backdrop blur and transparency
--   **Staggered Animations**: Smooth entrance effects with perfect timing
-
-## 🚀 **Quick Start**
-
-### **Prerequisites**
 - Node.js 18+ 
 - Docker Desktop (for Supabase)
-- Modern browser with backdrop-filter support
+- Supabase CLI: `brew install supabase/tap/supabase`
 
-### **Installation**
+### Install & Run (local)
 
-1. **Clone the repository**
-   ```bash
-   git clone <repository-url>
-   cd tea-time-rotation
-   ```
+1) Install dependencies
 
-2. **Install dependencies**
    ```bash
    npm install
    ```
 
-3. **Start Supabase (Backend)**
+2) Start Supabase services
+
    ```bash
-   # Install Supabase CLI
-   brew install supabase/tap/supabase
-   
-   # Start local Supabase
    supabase start
    ```
 
-4. **Setup Database**
+3) Initialize the database schema and sample data
+
    ```bash
-   # Apply schema and seed data
    psql postgresql://postgres:postgres@127.0.0.1:54322/postgres -f schema.sql
    ```
 
-5. **Configure Environment**
+4) Configure environment
+
+Create `.env.local` in `tea-time-rotation/`:
+
+```env
+VITE_SUPABASE_URL=http://127.0.0.1:54321
+VITE_SUPABASE_ANON_KEY=YOUR_LOCAL_ANON_KEY
+```
+
+Find the anon key from `supabase start` output or Supabase Studio.
+
+5) Run edge functions locally (needed for summarize)
+
    ```bash
-   # Create .env.local with Supabase credentials
-   echo 'VITE_SUPABASE_URL=http://127.0.0.1:54321
-   VITE_SUPABASE_ANON_KEY=your-anon-key-here' > .env.local
+supabase functions serve
    ```
 
-6. **Launch the Application**
+6) Start the frontend
+
    ```bash
    npm run dev
    ```
 
-7. **Open in Browser**
-   ```
-   🎉 Visit: http://localhost:5173
-     ```
+Open http://localhost:5173
 
-## 📖 **Complete Setup & Design Guide**
+## Environment
 
-### 🎨 **[Setup & Design Guide](./SETUP_GUIDE.md)**
+- `VITE_SUPABASE_URL`: Supabase API URL
+- `VITE_SUPABASE_ANON_KEY`: Supabase anon key for client SDK
 
-**Ready to run and fully functional!** 
+## Core Flows
 
-Our comprehensive guide covers:
-- **Quick Start Instructions** - Get running in 3 commands
-- **Design Transformation Details** - See the before/after
-- **Technical Implementation** - Full architecture overview
-- **Troubleshooting Guide** - Common issues and solutions
-- **Demo Walkthrough** - Complete user journey
-- **Current Status** - What works and why
+- Session lifecycle: Start session → Team submits orders → Summarize → Session completes → Start a new one
+- Assignment logic (edge function `summarize`):
+  - Load all non-excused orders for the session with their users
+  - Sort eligible users by `total_drinks_bought` asc, then `last_assigned_at` asc (nulls first)
+  - Pick the first user as assignee
+  - Persist rollups: update each user’s last drink/sugar, increment drink_count for participants, increment assignee’s total_drinks_bought by total orders, set session to completed with assignee and summarizer
 
-📋 [**Read the Complete Setup Guide →**](./SETUP_GUIDE.md)
+## Database Model (public)
 
-## 🛠 **Tech Stack**
+- `users`: id, name, auth_user_id, added_by, last_assigned_at, last_ordered_drink, last_sugar_level, total_drinks_bought, drink_count, profile_picture_url
+- `roles`, `user_roles`, `role_permissions(permission enum)`: RBAC
+- `sessions`: id, started_at, ended_at, status enum(active|completed), assignee_name, total_drinks_in_session, summarized_by
+- `orders`: id, session_id, user_id, drink_type, sugar_level, is_excused, created_at
+- Helpers: `increment_total_drinks_bought(p_user_id, p_amount)`, `increment_drink_count(user_id)`
+- Constraint: unique partial index ensuring only one `active` session at a time
 
-### **Frontend Excellence**
-- **React 19.1.0** - Latest with concurrent features
-- **TypeScript 5.8.3** - Type safety and developer experience
-- **Tailwind CSS 4.1.11** - Utility-first with custom design system
-- **Vite 7.0.4** - Lightning-fast development and builds
+## Auth & Roles
 
-### **Backend Power**  
-- **Supabase** - Real-time database with instant APIs
-- **PostgreSQL** - Robust relational database
-- **Edge Functions** - Serverless API endpoints
+- Auth: Supabase Auth with Google OAuth (button provided in UI)
+- Profile loading joins `users` with `user_roles → roles → role_permissions`
+- UI checks permissions like `can_add_user`, `can_summarize_session`, `can_abandon_session`, `can_update_order`, `can_cancel_order`
+- The `user-sync` edge function links new auth users to `users` and assigns the `member` role
 
-### **Design & UX**
-- **Glassmorphism** - Modern frosted glass design language
-- **Custom Animations** - Hardware-accelerated 60fps transitions  
-- **Google Fonts** - Premium Inter typography
-- **Responsive Design** - Mobile-first with touch optimization
+## Realtime
 
-## 🎯 **Perfect For**
+- Subscribes to `postgres_changes` on `sessions` and `orders`
+- Any insert/update/delete triggers a refresh of UI state
 
-- **Design System Showcases** - Demonstrate enterprise-grade UI/UX
-- **Team Building Tools** - Improve office culture and coordination  
-- **Portfolio Projects** - Show premium development skills
-- **Learning Resource** - Study modern React and design patterns
-- **Client Presentations** - Impress with attention to detail
+## Commands
 
-## 🌟 **What Users Say**
+- `npm run dev` — start Vite dev server
+- `npm run build` — type-check then build
+- `npm run preview` — preview production build
+- `npm run lint` — lint the codebase
 
-> *"This is the most beautiful tea ordering app I've ever seen. It actually makes me excited for tea time!"* - Team Lead
+## Troubleshooting
 
-> *"The attention to detail is incredible. Every animation feels purposeful and delightful."* - UX Designer  
+- Summarize does nothing: ensure `supabase functions serve` is running
+- Auth redirect errors: add your dev origin to Supabase Auth redirect URLs; Google OAuth must be enabled in the project
+- Realtime not updating: verify Supabase is running and your `VITE_SUPABASE_URL`/key are correct
+- One active session only: enforced by a unique index; abandon or summarize before starting a new one
 
-> *"Finally, an internal tool that doesn't look like it was built in the 90s."* - Developer
+## Notes for Production
 
-## 🤝 **Contributing**
-
-We welcome contributions that maintain our high standards of design and code quality:
-
-1. **Fork the repository**
-2. **Create a feature branch** (`git checkout -b feature/amazing-addition`)
-3. **Follow our design system** (see transformation guide)
-4. **Ensure 60fps performance** for any animations
-5. **Test on multiple devices** and browsers
-6. **Submit a pull request** with detailed description
-
-## 📄 **License**
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## 🎉 **Acknowledgments**
-
-- **Design Inspiration**: Modern glassmorphism and premium mobile apps
-- **Color Palette**: Inspired by authentic tea culture and natural tones
-- **Animation Principles**: Following Disney's 12 principles of animation  
-- **Accessibility**: WCAG 2.1 AA compliance for inclusive design
+- Configure Supabase Auth providers (Google) with production URLs
+- Add RLS policies to `users`, `orders`, `sessions`, and RBAC tables; none are defined in the dev schema here
+- Deploy edge functions (`summarize`, `user-sync`) to Supabase
+- Secure sensitive actions server-side as well (edge functions, RLS)
 
 ---
 
-**Built with 💛 for tea enthusiasts who appreciate exceptional design.**
-
-*Transform your next project with the same level of polish - [see how we did it](./SETUP_GUIDE.md)!*
+Built with React, TypeScript, Tailwind, and Supabase.

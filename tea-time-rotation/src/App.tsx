@@ -314,7 +314,7 @@ function App() {
           <h1 className="text-2xl sm:text-3xl lg:text-5xl font-bold text-gray-800 leading-tight mt-3 sm:mt-4 mb-2 drop-shadow-sm">
             Tea Time
           </h1>
-          <p className="text-gray-700 text-sm sm:text-base lg:text-lg font-semibold">Your premium quali-tea experience</p>
+          <p className="text-gray-700 text-sm sm:text-base lg:text-lg font-semibold">Your high quali-tea butler! </p>
         </div>
 
         {/* Enhanced Mobile-First Main Card */}

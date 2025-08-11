@@ -1,0 +1,186 @@
+Tea Time Rotation — Project Context
+
+Purpose
+- Coordinate team tea sessions: start a session, collect everyone’s orders, then fairly assign who makes tea.
+- Provide real-time, delightful UX with clear permissions around sensitive actions.
+
+High-Level Architecture
+- Client: React 19 + TypeScript + Tailwind (Vite).
+- Backend: Supabase (PostgreSQL, Realtime, Auth, Edge Functions).
+- Edge Functions: summarize (finalize a session and compute assignment), user-sync (sync OAuth users into users table + role assignment).
+
+Key User Flows
+1) Authentication
+   - UI provides “Login with Google” (`src/components/Auth.tsx`).
+   - On login, the app loads the current auth session (`src/hooks/useAuth.ts`).
+   - Profile resolution attempts to join `users → user_roles → roles → role_permissions` by matching `auth_user_id`. If no row, it falls back to auth metadata for the display name and an empty permission set.
+   - The `user-sync` edge function (intended to be hooked to auth events) creates/links a `users` row and assigns the `member` role when an auth user is created.
+
+2) Session Lifecycle
+   - Start: A user clicks “Start Tea Time”. A row is inserted into `sessions` with `status='active'` (`App.tsx: handleStartSession`). A partial unique index ensures only one active session at a time.
+   - Order: Team members select their name, pick drink and sugar level, and submit. Each user has at most one order per session (unique constraint on `(session_id, user_id)`). Updates are done via `upsert` (`OrderForm.tsx`). Users can revoke their own order if allowed by permissions.
+   - Realtime: The app subscribes to `postgres_changes` on `sessions` and `orders`. Any change triggers a reload of data (`App.tsx`).
+   - Finalize: A permitted user triggers “Summarize Tea Time”. The `summarize` edge function computes the assignee and writes rollups. The session is marked `completed`. The UI then shows a Summary view.
+   - Abandon: A permitted user can abandon the session after a PIN modal confirmation, which deletes all orders of that session and the session itself.
+
+3) Summary and Analytics
+   - After completion, `Summary.tsx` loads orders and renders aggregate and detailed breakdowns (drink type × sugar level, and name lists). It also displays the assignee and the summarizer’s name (looked up by `summarized_by`).
+
+Database Schema (public)
+- users
+  - id: uuid PK
+  - name: text NOT NULL
+  - auth_user_id: uuid UNIQUE (link to Supabase Auth user)
+  - added_by: uuid REFERENCES users(id) ON DELETE SET NULL
+  - last_assigned_at: timestamptz
+  - last_ordered_drink: text
+  - last_sugar_level: text
+  - total_drinks_bought: int DEFAULT 0
+  - drink_count: int DEFAULT 0
+  - profile_picture_url: text
+
+- roles
+  - id: uuid PK
+  - name: text UNIQUE
+
+- user_roles
+  - user_id: uuid REFERENCES users(id)
+  - role_id: uuid REFERENCES roles(id)
+  - PK (user_id, role_id)
+
+- type permission ENUM('can_add_user','can_summarize_session','can_abandon_session','can_update_order','can_cancel_order')
+
+- role_permissions
+  - role_id: uuid REFERENCES roles(id)
+  - permission: permission NOT NULL
+  - PK (role_id, permission)
+
+- sessions
+  - id: uuid PK
+  - started_at: timestamptz DEFAULT now()
+  - ended_at: timestamptz
+  - status: session_status ENUM('active','completed') DEFAULT 'active'
+  - assignee_name: text
+  - total_drinks_in_session: int DEFAULT 0
+  - summarized_by: uuid REFERENCES users(id)
+  - Index: unique(status) WHERE status='active' (enforces a single active session)
+
+- orders
+  - id: uuid PK
+  - session_id: uuid REFERENCES sessions(id)
+  - user_id: uuid REFERENCES users(id)
+  - drink_type: text NOT NULL
+  - sugar_level: text NOT NULL
+  - created_at: timestamptz DEFAULT now()
+  - is_excused: boolean DEFAULT false
+  - Unique: (session_id, user_id)
+
+- Functions
+  - increment_total_drinks_bought(p_user_id uuid, p_amount int)
+  - increment_drink_count(user_id uuid)
+
+Initialization & Seed
+- `schema.sql` creates all tables, enums, permissions, and indexes, and inserts a predefined user list.
+- `dummy-data.sql` demonstrates sample completed and active sessions with orders and preference updates.
+
+Auth Details
+- Supabase Auth with Google: `src/components/Auth.tsx` triggers `supabase.auth.signInWithOAuth({ provider: 'google' })`.
+- The app relies on `useAuth` to resolve a `profile` object with `roles` and `permissions`. If there is no `users` row yet, a fallback profile is constructed from auth metadata.
+- The `user-sync` edge function (`supabase/functions/user-sync/index.ts`) handles syncing: it creates or links a `users` row for new auth users and assigns the `member` role.
+
+Permissions & UI Guards
+- The UI checks `profile.permissions` to allow or restrict:
+  - can_add_user: open Add User modal and insert into `users` table
+  - can_summarize_session: invoke summarize edge function
+  - can_abandon_session: show PIN modal, then delete session + orders
+  - can_update_order: allow updating others’ orders
+  - can_cancel_order: allow canceling orders
+- The PIN modal enforces a local confirmation (client-side guard) before destructive actions. In production, also enforce server-side with RLS/edge validation.
+
+Edge Functions
+1) summarize (`supabase/functions/summarize/index.ts`)
+   - Input: { session_id }
+   - Loads all non-excused orders with joined user rows.
+   - Builds an array of participating users and sorts ascending by:
+     - total_drinks_bought
+     - last_assigned_at (nulls first)
+   - Picks the first user as assignee.
+   - For each order: updates the corresponding user’s `last_ordered_drink` and `last_sugar_level`.
+   - Increments `drink_count` for all participating users.
+   - Updates the assignee’s `last_assigned_at` and increments `total_drinks_bought` by total orders via RPC.
+   - Resolves `summarized_by` from the request’s Authorization header via `supabase.auth.getUser` → looks up matching `users.id` by `auth_user_id`.
+   - Marks the session completed and sets metadata: `ended_at`, `assignee_name`, `total_drinks_in_session`, `summarized_by`.
+
+2) user-sync (`supabase/functions/user-sync/index.ts`)
+   - Input: { record: authUser } (intended for auth webhook)
+   - Extracts a friendly `name` from `full_name` or email prefix.
+   - If a user with that name exists, links `auth_user_id`; otherwise inserts a new `users` row.
+   - Ensures the `member` role exists and inserts a `user_roles` row.
+
+Realtime
+- `App.tsx` subscribes to `sessions` and refreshes the active/completed view accordingly.
+- If no active session is found, it checks for a recently completed session (ended within the last 5 minutes) to keep summary visible briefly after completion.
+- When a session is active, it subscribes to `orders` and refetches `orders` + `users` on any change.
+
+Client Components & Hooks
+- `src/App.tsx`: top-level flow controller. Handles session discovery, realtime channels, summarize/abandon, and modals.
+- `src/components/Auth.tsx`: Google login entry.
+- `src/components/OrderForm.tsx`: select user, choose drink + sugar, place/update/revoke order, progress ring, and modals.
+- `src/components/Summary.tsx`: aggregate analytics and itemized lists, including assignee and summarizer.
+- `src/components/AddUserModal.tsx`: add new users (permission-gated).
+- `src/components/ui/Modal.tsx`: generic modal.
+- `src/components/ui/PinModal.tsx`: PIN confirmation modal.
+- `src/components/DangerZone.tsx`: styled container for critical actions.
+- `src/hooks/useAuth.ts`: session + profile resolution with permission flattening.
+- `src/hooks/useAddUserModal.ts`: modal state for adding users.
+- `src/hooks/usePinModal.ts`: PIN modal orchestration.
+- `src/supabaseClient.ts`: creates the Supabase client using `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`.
+
+Styling & Theming
+- Tailwind v4 with an extended tea-themed palette (`tailwind.config.js`).
+- Global and component-level polish in `src/index.css` (glass cards, premium buttons, motion, mobile ergonomics).
+- `index.html` includes meta tags and a playful favicon; Microsoft Clarity snippet present.
+
+Environment & Local Dev
+- Required env vars: `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`.
+- Local Supabase ports (from `supabase/config.toml`): API 54321, DB 54322, Studio 54323, Analytics 54327.
+- Start sequence: 1) `supabase start` 2) `psql ... -f schema.sql` 3) `supabase functions serve` 4) `npm run dev`.
+
+Security Considerations
+- This dev schema does not include RLS policies. For production:
+  - Add RLS to `users`, `orders`, `sessions`, and RBAC tables.
+  - Validate permissions server-side in edge functions.
+  - Avoid relying solely on client-side checks (PIN modal).
+  - Restrict function invocation to authenticated users with proper roles.
+
+Operational Notes
+- Only one active session can exist due to a unique partial index. To start a new session, summarize or abandon the current one first.
+- If realtime appears stale, the UI manually re-fetches after certain actions, but ensuring Supabase is running is critical.
+- The assignment logic depends on up-to-date `total_drinks_bought` and `last_assigned_at` and only considers non-excused orders.
+
+LLM Onboarding Hints
+- Primary goal: enable fair, rotating assignment after collecting orders.
+- Key files to read first:
+  - `src/App.tsx` for lifecycle and realtime
+  - `src/components/OrderForm.tsx` and `src/components/Summary.tsx` for core UX
+  - `supabase/functions/summarize/index.ts` for business logic
+  - `schema.sql` for data model and permissions enum
+  - `src/hooks/useAuth.ts` for auth + RBAC flattening
+- Common pitfalls:
+  - Forgetting to run edge functions (summarize will no-op)
+  - Missing env vars for Supabase client
+  - Attempting to start a new session while one is active
+
+Extensibility Ideas
+- Add RLS and server-side permission enforcement.
+- Introduce dark mode.
+- Add notification channels (email/Slack) post-summary.
+- Add export/reporting for completed sessions.
+- Track per-user opt-outs (excused) over time to further refine fairness.
+
+Versioning & Scripts
+- Scripts (`package.json`): `dev`, `build`, `preview`, `lint`.
+- Dependencies: `react`, `react-dom`, `@supabase/supabase-js`.
+- Dev: Tailwind, Vite, TypeScript, ESLint, vite-plugin-pwa.
+
+End of Project Context.
