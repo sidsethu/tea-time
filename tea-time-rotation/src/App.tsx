@@ -11,6 +11,8 @@ import PinModal from './components/ui/PinModal';
 import { usePinModal } from './hooks/usePinModal';
 import { useAuth } from './hooks/useAuth';
 import Auth from './components/Auth';
+import Leaderboard from './components/Leaderboard';
+import type { LeaderboardEntry } from './components/Leaderboard';
 
 interface Session {
   id: string;
@@ -42,6 +44,19 @@ function App() {
   const { isModalOpen, openModal, closeModal: closeAddUserModal } = useAddUserModal();
   const { isPinModalOpen, onConfirm: onPinConfirm, showPinModal, closePinModal } = usePinModal();
   const [kettleClicks, setKettleClicks] = useState(0);
+  const [topBuyers, setTopBuyers] = useState<LeaderboardEntry[]>([]);
+
+  const fetchLeaderboard = async () => {
+    const { data } = await supabase
+      .from('users')
+      .select('name, total_drinks_bought')
+      .order('total_drinks_bought', { ascending: false, nullsFirst: false })
+      .order('name', { ascending: true })
+      .limit(3);
+    if (data) {
+      setTopBuyers(data as LeaderboardEntry[]);
+    }
+  };
 
   useEffect(() => {
     const fetchAllData = async (currentSession: Session) => {
@@ -115,6 +130,25 @@ function App() {
 
     return () => {
       supabase.removeChannel(sessionListener);
+    };
+  }, []);
+
+  // Fetch and live-update leaderboard (independent of session)
+  useEffect(() => {
+    fetchLeaderboard();
+    const usersListener = supabase
+      .channel('users-leaderboard')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'users' },
+        () => {
+          fetchLeaderboard();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(usersListener);
     };
   }, []);
 
@@ -307,10 +341,16 @@ function App() {
       <div className="relative z-10 min-h-screen flex flex-col items-center justify-center p-3 sm:p-6 lg:p-8 pt-24 sm:pt-6">
         {/* Enhanced Mobile-First Logo/Header Section */}
         <div className="text-center mb-6 sm:mb-8 animate-fade-in px-4">
-          <div className="relative inline-block" onClick={handleKettleClick} style={{ cursor: 'pointer' }}>
+          <button
+            type="button"
+            className="relative inline-block"
+            onClick={handleKettleClick}
+            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleKettleClick(); } }}
+            aria-label="Open admin actions"
+          >
             <div className="absolute -inset-4 bg-gradient-to-r from-primary-500 to-chai-500 rounded-full blur-lg opacity-20 animate-pulse-slow"></div>
             <div className="relative text-6xl sm:text-7xl lg:text-8xl animate-bounce-subtle">🫖</div>
-          </div>
+          </button>
           <h1 className="text-2xl sm:text-3xl lg:text-5xl font-bold text-gray-800 leading-tight mt-3 sm:mt-4 mb-2 drop-shadow-sm">
             Tea Time
           </h1>
@@ -361,6 +401,7 @@ function App() {
                       )}
                     </div>
                   </div>
+                  <Leaderboard entries={topBuyers} />
                 </div>
                 
                 <div className="flex flex-col items-center space-y-4">

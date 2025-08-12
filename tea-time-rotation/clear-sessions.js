@@ -1,9 +1,19 @@
 import { createClient } from '@supabase/supabase-js';
+import dotenv from 'dotenv';
 
-const supabaseUrl = 'https://cfinlimevshdrwnymuca.supabase.co';
-const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNmaW5saW1ldnNoZHJ3bnltdWNhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTM4NzMzMTMsImV4cCI6MjA2OTQ0OTMxM30.eTk3PUOFX6gMwtzxwLZZMSQ0NzN7QA7QdttIK2tXg1w';
+import { fileURLToPath } from 'url';
+import path from 'path';
 
-const supabase = createClient(supabaseUrl, supabaseAnonKey);
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+const result = dotenv.config({ path: path.resolve(__dirname, '.env.local') });
+
+if (result.error) {
+  console.error('Error loading .env file', result.error);
+}
+
+const supabase = createClient(process.env.VITE_SUPABASE_URL, process.env.VITE_SUPABASE_ANON_KEY);
 
 const clearSessions = async () => {
   const { error } = await supabase.from('sessions').delete().eq('status', 'active');

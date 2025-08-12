@@ -13,6 +13,8 @@ dist-ssr
 *.local
 .env*
 !*.env.example
+.cursorrules
+.clinerules
 
 # Editor directories and files
 .vscode/*
