@@ -48,11 +48,16 @@ Deno.serve(async (req) => {
 
   const users = orders.map(order => order.users);
 
-  // Sort by total_drinks_bought (asc) and then by last_assigned_at (asc)
+  // Sort by drink_count/total_drinks_bought ratio (desc) and then by last_assigned_at (asc)
   users.sort((a, b) => {
-    if (a.total_drinks_bought !== b.total_drinks_bought) {
-      return a.total_drinks_bought - b.total_drinks_bought;
+    const ratioA = a.total_drinks_bought > 0 ? a.drink_count / a.total_drinks_bought : (a.drink_count > 0 ? Infinity : 0);
+    const ratioB = b.total_drinks_bought > 0 ? b.drink_count / b.total_drinks_bought : (b.drink_count > 0 ? Infinity : 0);
+
+    if (ratioA !== ratioB) {
+      return ratioB - ratioA; // Sort descending by ratio
     }
+
+    // Tie-breaker: earliest last_assigned_at
     if (a.last_assigned_at === null) return -1;
     if (b.last_assigned_at === null) return 1;
     return new Date(a.last_assigned_at).getTime() - new Date(b.last_assigned_at).getTime();

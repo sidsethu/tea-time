@@ -101,9 +101,9 @@ Edge Functions
 1) summarize (`supabase/functions/summarize/index.ts`)
    - Input: { session_id }
    - Loads all non-excused orders with joined user rows.
-   - Builds an array of participating users and sorts ascending by:
-     - total_drinks_bought
-     - last_assigned_at (nulls first)
+   - Builds an array of participating users and sorts by:
+     - drink_count / total_drinks_bought ratio (descending). New users with 0 drinks bought and at least one drink consumed are given an infinite ratio to prioritize them.
+     - last_assigned_at (ascending, nulls first)
    - Picks the first user as assignee.
    - For each order: updates the corresponding user’s `last_ordered_drink` and `last_sugar_level`.
    - Increments `drink_count` for all participating users.

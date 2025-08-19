@@ -12,6 +12,7 @@ interface User {
   last_ordered_drink: string;
   last_sugar_level: string;
   profile_picture_url?: string;
+  roles: string[];
 }
 
 interface Order {
@@ -262,6 +263,11 @@ const OrderForm = ({ session, orders, users, onOrderUpdate }: OrderFormProps) =>
                       : 'bg-white border-gray-200 text-gray-800 hover:border-green-300 hover:bg-green-50 active:bg-green-100'
                   }`}
                 >
+                  {user.roles.includes('admin') && (
+                    <div className="absolute top-1 right-1 text-yellow-400">
+                      👑
+                    </div>
+                  )}
                   {hasOrdered && !isSelected && (
                     <div className="absolute -top-1 -right-1 w-4 h-4 sm:w-5 sm:h-5 bg-blue-500 text-white rounded-full flex items-center justify-center text-xs font-bold">
                       ✓

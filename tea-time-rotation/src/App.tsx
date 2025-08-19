@@ -26,11 +26,12 @@ interface Order {
 }
 
 interface User {
-  id: string;
+  id:string;
   name: string;
   last_ordered_drink: string;
   last_sugar_level: string;
   profile_picture_url?: string;
+  roles: string[];
 }
 
 function App() {
@@ -62,10 +63,18 @@ function App() {
     const fetchAllData = async (currentSession: Session) => {
       const [ordersData, usersData] = await Promise.all([
         supabase.from('orders').select('*').eq('session_id', currentSession.id),
-        supabase.from('users').select('id, name, last_ordered_drink, last_sugar_level, profile_picture_url'),
+        supabase.from('users').select('id, name, last_ordered_drink, last_sugar_level, profile_picture_url, roles:user_roles(roles(name))'),
       ]);
       if (ordersData.data) setOrders(ordersData.data);
-      if (usersData.data) setUsers(usersData.data);
+      if (usersData.data) {
+          const transformedUsers = usersData.data.map(user => {
+              const roles = (user.roles as unknown as { roles: { name: string } }[]).map(
+                  (r) => r.roles.name
+              );
+              return { ...user, roles };
+          });
+          setUsers(transformedUsers as User[]);
+      }
     };
 
     const fetchSession = async () => {
@@ -156,10 +165,18 @@ function App() {
   const fetchAllData = async (currentSession: Session) => {
     const [ordersData, usersData] = await Promise.all([
       supabase.from('orders').select('*').eq('session_id', currentSession.id),
-      supabase.from('users').select('id, name, last_ordered_drink, last_sugar_level, profile_picture_url'),
+      supabase.from('users').select('id, name, last_ordered_drink, last_sugar_level, profile_picture_url, roles:user_roles(roles(name))'),
     ]);
     if (ordersData.data) setOrders(ordersData.data);
-    if (usersData.data) setUsers(usersData.data);
+    if (usersData.data) {
+        const transformedUsers = usersData.data.map(user => {
+            const roles = (user.roles as unknown as { roles: { name: string } }[]).map(
+                (r) => r.roles.name
+            );
+            return { ...user, roles };
+        });
+        setUsers(transformedUsers as User[]);
+    }
   };
 
   // Separate useEffect for orders listener that depends on session
