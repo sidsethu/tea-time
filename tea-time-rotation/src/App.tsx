@@ -421,7 +421,19 @@ function App() {
                     <p className="text-gray-700 text-base sm:text-lg font-medium">Gather everyone and start brewing memories!</p>
                   </div>
                   
-                  <ChaiLytics topSponsors={topBuyers} topDrinkers={topDrinkers} totalSessions={totalSessions} lastAssignee={lastAssignee} />
+                  {/* Stats */}
+                  <div className="mt-6 bg-white/80 border border-gray-200 rounded-xl p-4">
+                    <h3 className="text-lg font-semibold text-gray-800 mb-2">Session Stats</h3>
+                    <div className="text-left text-gray-600 space-y-1">
+                      {totalSessions > 0 && (
+                        <p>📈 Total Sessions: <strong>{totalSessions}</strong></p>
+                      )}
+                      {lastAssignee && (
+                        <p>🏆 Last Sponsor: <strong>{lastAssignee}</strong></p>
+                      )}
+                    </div>
+                  </div>
+                  <ChaiLytics topSponsors={topBuyers} topDrinkers={topDrinkers} />
                 </div>
                 
                 <div className="flex flex-col items-center space-y-4">
