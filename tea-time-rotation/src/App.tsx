@@ -11,7 +11,7 @@ import PinModal from './components/ui/PinModal';
 import { usePinModal } from './hooks/usePinModal';
 import { useAuth } from './hooks/useAuth';
 import Auth from './components/Auth';
-import Leaderboard from './components/Leaderboard';
+import ChaiLytics from './components/ChaiLytics';
 import type { LeaderboardEntry } from './components/Leaderboard';
 
 interface Session {
@@ -46,11 +46,24 @@ function App() {
   const { isPinModalOpen, onConfirm: onPinConfirm, showPinModal, closePinModal } = usePinModal();
   const [kettleClicks, setKettleClicks] = useState(0);
   const [topBuyers, setTopBuyers] = useState<LeaderboardEntry[]>([]);
+  const [topDrinkers, setTopDrinkers] = useState<LeaderboardEntry[]>([]);
+
+  const fetchTopDrinkers = async () => {
+    const { data } = await supabase
+      .from('users')
+      .select('name, drink_count, total_drinks_bought')
+      .order('drink_count', { ascending: false, nullsFirst: false })
+      .order('name', { ascending: true })
+      .limit(3);
+    if (data) {
+      setTopDrinkers(data as LeaderboardEntry[]);
+    }
+  };
 
   const fetchLeaderboard = async () => {
     const { data } = await supabase
       .from('users')
-      .select('name, total_drinks_bought')
+      .select('name, total_drinks_bought, drink_count')
       .order('total_drinks_bought', { ascending: false, nullsFirst: false })
       .order('name', { ascending: true })
       .limit(3);
@@ -145,6 +158,7 @@ function App() {
   // Fetch and live-update leaderboard (independent of session)
   useEffect(() => {
     fetchLeaderboard();
+    fetchTopDrinkers();
     const usersListener = supabase
       .channel('users-leaderboard')
       .on(
@@ -152,6 +166,7 @@ function App() {
         { event: '*', schema: 'public', table: 'users' },
         () => {
           fetchLeaderboard();
+          fetchTopDrinkers();
         }
       )
       .subscribe();
@@ -406,19 +421,7 @@ function App() {
                     <p className="text-gray-700 text-base sm:text-lg font-medium">Gather everyone and start brewing memories!</p>
                   </div>
                   
-                  {/* Stats */}
-                  <div className="mt-6 bg-white/80 border border-gray-200 rounded-xl p-4">
-                    <h3 className="text-lg font-semibold text-gray-800 mb-2">Session Stats</h3>
-                    <div className="text-left text-gray-600 space-y-1">
-                      {totalSessions > 0 && (
-                        <p>📈 Total Sessions: <strong>{totalSessions}</strong></p>
-                      )}
-                      {lastAssignee && (
-                        <p>🏆 Last Sponsor: <strong>{lastAssignee}</strong></p>
-                      )}
-                    </div>
-                  </div>
-                  <Leaderboard entries={topBuyers} />
+                  <ChaiLytics topSponsors={topBuyers} topDrinkers={topDrinkers} totalSessions={totalSessions} lastAssignee={lastAssignee} />
                 </div>
                 
                 <div className="flex flex-col items-center space-y-4">

@@ -25,6 +25,7 @@ Key User Flows
 
 3) Summary and Analytics
    - After completion, `Summary.tsx` loads orders and renders aggregate and detailed breakdowns (drink type × sugar level, and name lists). It also displays the assignee and the summarizer’s name (looked up by `summarized_by`).
+   - The home screen displays a "Chai-lytics" section with tabbed leaderboards for "Top Sponsors" and "Top Drinkers".
 
 Database Schema (public)
 - users
@@ -131,6 +132,7 @@ Client Components & Hooks
 - `src/components/ui/Modal.tsx`: generic modal.
 - `src/components/ui/PinModal.tsx`: PIN confirmation modal.
 - `src/components/DangerZone.tsx`: styled container for critical actions.
+- `src/components/ChaiLytics.tsx`: tabbed leaderboard for top sponsors and drinkers.
 - `src/hooks/useAuth.ts`: session + profile resolution with permission flattening.
 - `src/hooks/useAddUserModal.ts`: modal state for adding users.
 - `src/hooks/usePinModal.ts`: PIN modal orchestration.
