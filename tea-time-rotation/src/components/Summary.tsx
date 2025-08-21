@@ -1,5 +1,8 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../supabaseClient';
+import Modal from './ui/Modal';
+import ChaiLytics from './ChaiLytics';
+import type { LeaderboardEntry } from './Leaderboard';
 
 interface User {
   name: string;
@@ -27,6 +30,52 @@ const Summary = ({ session, onNewSession }: SummaryProps) => {
   const [orders, setOrders] = useState<Order[]>([]);
   const [assignee, setAssignee] = useState<string | null>(null);
   const [summarizedBy, setSummarizedBy] = useState<string | null>(null);
+  const [isChaiLyticsOpen, setIsChaiLyticsOpen] = useState(false);
+  const [chaiLyticsData, setChaiLyticsData] = useState<{
+    topSponsors: LeaderboardEntry[];
+    topDrinkers: LeaderboardEntry[];
+    totalSessions: number;
+    lastAssignee: string | null;
+  } | null>(null);
+
+  const fetchChaiLyticsData = async () => {
+    const { data: topSponsors } = await supabase
+      .from('users')
+      .select('name, total_drinks_bought, drink_count')
+      .order('total_drinks_bought', { ascending: false })
+      .limit(3);
+
+    const { data: topDrinkers } = await supabase
+      .from('users')
+      .select('name, total_drinks_bought, drink_count')
+      .order('drink_count', { ascending: false })
+      .limit(3);
+
+    const { count: totalSessions } = await supabase
+      .from('sessions')
+      .select('*', { count: 'exact', head: true })
+      .eq('status', 'completed');
+
+    const { data: lastSession } = await supabase
+      .from('sessions')
+      .select('assignee_name')
+      .eq('status', 'completed')
+      .order('ended_at', { ascending: false })
+      .limit(1)
+      .single();
+
+    setChaiLyticsData({
+      topSponsors: topSponsors || [],
+      topDrinkers: topDrinkers || [],
+      totalSessions: totalSessions || 0,
+      lastAssignee: lastSession?.assignee_name || null,
+    });
+  };
+
+  const handleOpenChaiLytics = () => {
+    fetchChaiLyticsData();
+    setIsChaiLyticsOpen(true);
+  };
 
   useEffect(() => {
     const fetchOrders = async () => {
@@ -259,6 +308,29 @@ const Summary = ({ session, onNewSession }: SummaryProps) => {
         </div>
       )}
 
+      <div className="flex justify-center">
+        <button
+          onClick={handleOpenChaiLytics}
+          className="btn-secondary text-lg sm:text-xl font-bold px-6 sm:px-8 py-3 sm:py-4 group relative overflow-hidden rounded-xl sm:rounded-2xl w-full max-w-xs sm:max-w-sm mt-4"
+        >
+          Show Chai-Lytics
+        </button>
+      </div>
+
+      {chaiLyticsData && (
+        <Modal
+          isOpen={isChaiLyticsOpen}
+          onClose={() => setIsChaiLyticsOpen(false)}
+          title="Chai-Lytics"
+        >
+          <ChaiLytics
+            topSponsors={chaiLyticsData.topSponsors}
+            topDrinkers={chaiLyticsData.topDrinkers}
+            totalSessions={chaiLyticsData.totalSessions}
+            lastAssignee={chaiLyticsData.lastAssignee}
+          />
+        </Modal>
+      )}
     </div>
   );
 };

@@ -1,10 +1,11 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, type ReactNode } from 'react';
 
 interface ModalProps {
   isOpen: boolean;
   onClose: () => void;
-  title: string;
-  message: string;
+  title?: string;
+  message?: string;
+  children?: ReactNode;
   type?: 'success' | 'error' | 'warning' | 'info';
   showCancel?: boolean;
   onConfirm?: () => void;
@@ -17,6 +18,7 @@ const Modal = ({
   onClose,
   title,
   message,
+  children,
   type = 'info',
   showCancel = false,
   onConfirm,
@@ -79,17 +81,20 @@ const Modal = ({
       }`}>
         
         {/* Header */}
-        <div className={`bg-gradient-to-r ${getColors()} rounded-t-2xl p-4 text-center`}>
-          <div className="text-4xl mb-2">{getIcon()}</div>
-          <h3 className="text-xl font-bold text-white">{title}</h3>
-        </div>
+        {title && (
+          <div className={`bg-gradient-to-r ${getColors()} rounded-t-2xl p-4 text-center`}>
+            <div className="text-4xl mb-2">{getIcon()}</div>
+            <h3 className="text-xl font-bold text-white">{title}</h3>
+          </div>
+        )}
         
         {/* Content */}
         <div className="p-6 text-center">
-          <p className="text-gray-700 text-base leading-relaxed mb-6">{message}</p>
+          {message && <p className="text-gray-700 text-base leading-relaxed mb-6">{message}</p>}
+          {children}
           
           {/* Buttons */}
-          <div className={`flex ${showCancel ? 'space-x-3' : 'justify-center'}`}>
+          <div className={`flex ${showCancel ? 'space-x-3' : 'justify-center'} mt-6`}>
             {showCancel && (
               <button
                 onClick={onClose}
