@@ -23,7 +23,7 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { session_id } = await req.json();
+    const { session_id, confirm_assignee } = await req.json();
 
     const { data: orders, error: ordersError } = await supabase
     .from('orders')
@@ -63,7 +63,27 @@ Deno.serve(async (req) => {
     return new Date(a.last_assigned_at).getTime() - new Date(b.last_assigned_at).getTime();
   });
 
-  const assignee = users[0];
+  // Phase 1: Return top 2 candidates for admin selection
+  if (!confirm_assignee) {
+    const topCandidates = users.slice(0, Math.min(2, users.length));
+    return new Response(JSON.stringify({
+      requiresConfirmation: true,
+      candidates: topCandidates
+    }), {
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      status: 200,
+    });
+  }
+
+  // Phase 2: Commit to DB with confirmed assignee
+  const assignee = users.find(u => u.id === confirm_assignee);
+
+  if (!assignee) {
+    return new Response(JSON.stringify({ error: 'Invalid assignee selected.' }), {
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      status: 400,
+    });
+  }
 
   // Update last order details for each user
   for (const order of orders) {
@@ -113,16 +133,16 @@ Deno.serve(async (req) => {
 
   await supabase
     .from('sessions')
-    .update({ 
-      status: 'completed', 
-      ended_at: new Date().toISOString(), 
+    .update({
+      status: 'completed',
+      ended_at: new Date().toISOString(),
       assignee_name: assignee.name,
       total_drinks_in_session: orders.length,
       summarized_by: summarizerUserId,
     })
     .eq('id', session_id);
 
-  return new Response(JSON.stringify({ assignee }), {
+  return new Response(JSON.stringify({ assignee, committed: true }), {
     headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     status: 200,
   });

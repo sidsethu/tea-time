@@ -32,6 +32,9 @@ interface User {
   last_sugar_level: string;
   profile_picture_url?: string;
   roles: string[];
+  total_drinks_bought: number;
+  drink_count: number;
+  last_assigned_at: string | null;
 }
 
 function App() {
@@ -47,6 +50,9 @@ function App() {
   const [kettleClicks, setKettleClicks] = useState(0);
   const [topBuyers, setTopBuyers] = useState<LeaderboardEntry[]>([]);
   const [topDrinkers, setTopDrinkers] = useState<LeaderboardEntry[]>([]);
+  const [showAssigneeModal, setShowAssigneeModal] = useState(false);
+  const [candidates, setCandidates] = useState<User[]>([]);
+  const [selectedAssignee, setSelectedAssignee] = useState<string>('');
 
   const fetchTopDrinkers = async () => {
     const { data } = await supabase
@@ -76,7 +82,7 @@ function App() {
     const fetchAllData = async (currentSession: Session) => {
       const [ordersData, usersData] = await Promise.all([
         supabase.from('orders').select('*').eq('session_id', currentSession.id),
-        supabase.from('users').select('id, name, last_ordered_drink, last_sugar_level, profile_picture_url, roles:user_roles(roles(name))'),
+        supabase.from('users').select('id, name, last_ordered_drink, last_sugar_level, profile_picture_url, total_drinks_bought, drink_count, last_assigned_at, roles:user_roles(roles(name))'),
       ]);
       if (ordersData.data) setOrders(ordersData.data);
       if (usersData.data) {
@@ -217,6 +223,29 @@ function App() {
     };
   }, [session]);
 
+  // Helper function to calculate ratio
+  const calculateRatio = (user: User) => {
+    if (user.total_drinks_bought > 0) {
+      return (user.drink_count / user.total_drinks_bought).toFixed(2);
+    }
+    return user.drink_count > 0 ? '∞' : '0.00';
+  };
+
+  // Helper function to format last assigned date
+  const formatLastAssigned = (dateString: string | null) => {
+    if (!dateString) return 'Never';
+    const date = new Date(dateString);
+    const now = new Date();
+    const diffTime = Math.abs(now.getTime() - date.getTime());
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+    if (diffDays === 0) return 'Today';
+    if (diffDays === 1) return 'Yesterday';
+    if (diffDays < 7) return `${diffDays} days ago`;
+    if (diffDays < 30) return `${Math.floor(diffDays / 7)} weeks ago`;
+    return `${Math.floor(diffDays / 30)} months ago`;
+  };
+
   const handleStartSession = async () => {
     const { data } = await supabase.from('sessions').insert([{ status: 'active' }]).select().single();
     setSession(data);
@@ -250,7 +279,8 @@ function App() {
       'This will complete the session and assign someone to make tea. Everyone will see the results.',
       async () => {
         try {
-          const { error } = await supabase.functions.invoke('summarize', {
+          // Phase 1: Get candidate list
+          const { data, error } = await supabase.functions.invoke('summarize', {
             body: { session_id: session.id },
           });
 
@@ -259,16 +289,12 @@ function App() {
             showError('Session Error', `Could not finalize the session: ${error.message}`);
             return;
           }
-          
-          // Force refresh the session data to get updated status
-          const { data: updatedSession } = await supabase
-            .from('sessions')
-            .select('*')
-            .eq('id', session.id)
-            .single();
-          
-          if (updatedSession) {
-            setSession(updatedSession);
+
+          // Check if we need admin confirmation
+          if (data?.requiresConfirmation && data?.candidates) {
+            setCandidates(data.candidates);
+            setSelectedAssignee(data.candidates[0]?.id || ''); // Default to first candidate
+            setShowAssigneeModal(true);
           }
         } catch (err) {
           console.error('Unexpected error during summarize:', err);
@@ -278,6 +304,50 @@ function App() {
       'Finalize Session',
       'Cancel'
     );
+  };
+
+  const handleConfirmAssignment = async () => {
+    if (!session || !selectedAssignee) {
+      showError('Selection Required', 'Please select an assignee.');
+      return;
+    }
+
+    try {
+      // Phase 2: Commit with selected assignee
+      const { data, error } = await supabase.functions.invoke('summarize', {
+        body: { session_id: session.id, confirm_assignee: selectedAssignee },
+      });
+
+      if (error) {
+        console.error('Summarize function error:', error);
+        showError('Session Error', `Could not finalize the session: ${error.message}`);
+        return;
+      }
+
+      if (data?.committed) {
+        setShowAssigneeModal(false);
+
+        // Force refresh the session data to get updated status
+        const { data: updatedSession } = await supabase
+          .from('sessions')
+          .select('*')
+          .eq('id', session.id)
+          .single();
+
+        if (updatedSession) {
+          setSession(updatedSession);
+        }
+      }
+    } catch (err) {
+      console.error('Unexpected error during confirm:', err);
+      showError('Unexpected Error', 'Something went wrong. Please try again.');
+    }
+  };
+
+  const handleCancelAssigneeSelection = () => {
+    setShowAssigneeModal(false);
+    setCandidates([]);
+    setSelectedAssignee('');
   };
 
   const handleAbandonSession = async () => {
@@ -529,6 +599,88 @@ function App() {
         message="Enter the PIN to confirm abandoning this session. This action cannot be undone."
         correctPin="1428"
       />
+
+      {/* Assignee Selection Modal */}
+      {showAssigneeModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-fade-in">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full animate-scale-in border-2 border-primary-200">
+            {/* Modal Header */}
+            <div className="bg-gradient-to-r from-primary-500 to-chai-500 text-white px-6 py-4 rounded-t-2xl">
+              <h2 className="text-2xl font-bold flex items-center">
+                <span className="mr-3 text-3xl">🎯</span>
+                Confirm Tea Maker Assignment
+              </h2>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-6 space-y-4 bg-white">
+              <p className="text-gray-800 text-base font-semibold mb-4">
+                Select who should get tea this time:
+              </p>
+
+              <div className="space-y-3">
+                {candidates.map((candidate, index) => (
+                  <label
+                    key={candidate.id}
+                    className={`block cursor-pointer transition-all duration-200 ${
+                      selectedAssignee === candidate.id
+                        ? 'bg-primary-200 border-primary-600 shadow-md'
+                        : 'bg-white border-gray-400 hover:border-primary-500 hover:bg-primary-100'
+                    } border-2 rounded-xl p-4`}
+                  >
+                    <div className="flex items-center">
+                      <input
+                        type="radio"
+                        name="assignee"
+                        value={candidate.id}
+                        checked={selectedAssignee === candidate.id}
+                        onChange={(e) => setSelectedAssignee(e.target.value)}
+                        className="w-5 h-5 text-primary-500 focus:ring-primary-500 accent-primary-500"
+                      />
+                      <div className="ml-4 flex-1">
+                        <div className="flex items-center gap-3 flex-wrap">
+                          <span className="font-bold text-lg text-gray-900">
+                            {candidate.name}
+                          </span>
+                          {index === 0 && (
+                            <span style={{backgroundColor: '#f5862d'}} className="text-white text-xs font-bold px-3 py-1 rounded-full inline-flex items-center gap-1 whitespace-nowrap">
+                              <span>⭐</span>
+                              <span>Recommended</span>
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-sm text-gray-900 mt-2 flex items-center flex-wrap gap-2">
+                          <span className="font-medium">Ratio: {calculateRatio(candidate)}</span>
+                          <span className="text-gray-500">•</span>
+                          <span className="font-medium">Last: {formatLastAssigned(candidate.last_assigned_at)}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-6 flex flex-col sm:flex-row gap-3 bg-white rounded-b-2xl">
+              <button
+                onClick={handleConfirmAssignment}
+                style={{backgroundColor: '#f5862d'}}
+                className="flex-1 hover:bg-primary-600 text-white font-bold py-4 px-6 rounded-xl transition-all duration-200 shadow-lg"
+              >
+                ✓ Confirm Assignment
+              </button>
+              <button
+                onClick={handleCancelAssigneeSelection}
+                style={{backgroundColor: '#9ca3af'}}
+                className="flex-1 hover:bg-gray-500 text-white font-bold py-4 px-6 rounded-xl transition-all duration-200 shadow-md"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

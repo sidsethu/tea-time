@@ -38,6 +38,15 @@ const Summary = ({ session, onNewSession }: SummaryProps) => {
     lastAssignee: string | null;
   } | null>(null);
 
+  // Scroll to top when Summary component mounts
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, []);
+
   const fetchChaiLyticsData = async () => {
     const { data: topSponsors } = await supabase
       .from('users')
