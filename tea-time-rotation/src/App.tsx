@@ -53,6 +53,11 @@ function App() {
   const [showAssigneeModal, setShowAssigneeModal] = useState(false);
   const [candidates, setCandidates] = useState<User[]>([]);
   const [selectedAssignee, setSelectedAssignee] = useState<string>('');
+  const [currentUserStats, setCurrentUserStats] = useState<{
+    userData: LeaderboardEntry;
+    sponsorRank: number;
+    drinkerRank: number;
+  } | null>(null);
 
   const fetchTopDrinkers = async () => {
     const { data } = await supabase
@@ -75,6 +80,48 @@ function App() {
       .limit(3);
     if (data) {
       setTopBuyers(data as LeaderboardEntry[]);
+    }
+  };
+
+  const fetchCurrentUserStats = async () => {
+    if (!profile?.name) {
+      setCurrentUserStats(null);
+      return;
+    }
+
+    try {
+      // Get current user's data
+      const { data: userData, error: userError } = await supabase
+        .from('users')
+        .select('name, total_drinks_bought, drink_count')
+        .eq('name', profile.name)
+        .single();
+
+      if (userError || !userData) {
+        setCurrentUserStats(null);
+        return;
+      }
+
+      // Get sponsor rank (count users with more drinks bought)
+      const { count: sponsorsAbove } = await supabase
+        .from('users')
+        .select('*', { count: 'exact', head: true })
+        .gt('total_drinks_bought', userData.total_drinks_bought || 0);
+
+      // Get drinker rank (count users with more drinks consumed)
+      const { count: drinkersAbove } = await supabase
+        .from('users')
+        .select('*', { count: 'exact', head: true })
+        .gt('drink_count', userData.drink_count || 0);
+
+      setCurrentUserStats({
+        userData: userData as LeaderboardEntry,
+        sponsorRank: (sponsorsAbove || 0) + 1,
+        drinkerRank: (drinkersAbove || 0) + 1,
+      });
+    } catch (error) {
+      console.error('Error fetching current user stats:', error);
+      setCurrentUserStats(null);
     }
   };
 
@@ -165,6 +212,7 @@ function App() {
   useEffect(() => {
     fetchLeaderboard();
     fetchTopDrinkers();
+    fetchCurrentUserStats();
     const usersListener = supabase
       .channel('users-leaderboard')
       .on(
@@ -173,6 +221,7 @@ function App() {
         () => {
           fetchLeaderboard();
           fetchTopDrinkers();
+          fetchCurrentUserStats();
         }
       )
       .subscribe();
@@ -180,7 +229,7 @@ function App() {
     return () => {
       supabase.removeChannel(usersListener);
     };
-  }, []);
+  }, [profile?.name]); // Re-fetch when user changes
 
   // Function to fetch all data for a session
   const fetchAllData = async (currentSession: Session) => {
@@ -491,7 +540,14 @@ function App() {
                     <p className="text-gray-700 text-base sm:text-lg font-medium">Gather everyone and start brewing memories!</p>
                   </div>
                   
-                  <ChaiLytics topSponsors={topBuyers} topDrinkers={topDrinkers} totalSessions={totalSessions} lastAssignee={lastAssignee} />
+                  <ChaiLytics
+                    topSponsors={topBuyers}
+                    topDrinkers={topDrinkers}
+                    totalSessions={totalSessions}
+                    lastAssignee={lastAssignee}
+                    currentUserName={profile?.name}
+                    currentUserStats={currentUserStats || undefined}
+                  />
                 </div>
                 
                 <div className="flex flex-col items-center space-y-4">

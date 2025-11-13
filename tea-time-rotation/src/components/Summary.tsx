@@ -3,6 +3,7 @@ import { supabase } from '../supabaseClient';
 import Modal from './ui/Modal';
 import ChaiLytics from './ChaiLytics';
 import type { LeaderboardEntry } from './Leaderboard';
+import { useAuth } from '../hooks/useAuth';
 
 interface User {
   name: string;
@@ -27,6 +28,7 @@ interface SummaryProps {
 }
 
 const Summary = ({ session, onNewSession }: SummaryProps) => {
+  const { profile } = useAuth();
   const [orders, setOrders] = useState<Order[]>([]);
   const [assignee, setAssignee] = useState<string | null>(null);
   const [summarizedBy, setSummarizedBy] = useState<string | null>(null);
@@ -36,6 +38,11 @@ const Summary = ({ session, onNewSession }: SummaryProps) => {
     topDrinkers: LeaderboardEntry[];
     totalSessions: number;
     lastAssignee: string | null;
+    currentUserStats?: {
+      userData: LeaderboardEntry;
+      sponsorRank: number;
+      drinkerRank: number;
+    };
   } | null>(null);
 
   // Scroll to top when Summary component mounts
@@ -73,11 +80,44 @@ const Summary = ({ session, onNewSession }: SummaryProps) => {
       .limit(1)
       .single();
 
+    // Fetch current user stats
+    let currentUserStats = undefined;
+    if (profile?.name) {
+      try {
+        const { data: userData } = await supabase
+          .from('users')
+          .select('name, total_drinks_bought, drink_count')
+          .eq('name', profile.name)
+          .single();
+
+        if (userData) {
+          const { count: sponsorsAbove } = await supabase
+            .from('users')
+            .select('*', { count: 'exact', head: true })
+            .gt('total_drinks_bought', userData.total_drinks_bought || 0);
+
+          const { count: drinkersAbove } = await supabase
+            .from('users')
+            .select('*', { count: 'exact', head: true })
+            .gt('drink_count', userData.drink_count || 0);
+
+          currentUserStats = {
+            userData: userData as LeaderboardEntry,
+            sponsorRank: (sponsorsAbove || 0) + 1,
+            drinkerRank: (drinkersAbove || 0) + 1,
+          };
+        }
+      } catch (error) {
+        console.error('Error fetching current user stats:', error);
+      }
+    }
+
     setChaiLyticsData({
       topSponsors: topSponsors || [],
       topDrinkers: topDrinkers || [],
       totalSessions: totalSessions || 0,
       lastAssignee: lastSession?.assignee_name || null,
+      currentUserStats,
     });
   };
 
@@ -337,6 +377,8 @@ const Summary = ({ session, onNewSession }: SummaryProps) => {
             topDrinkers={chaiLyticsData.topDrinkers}
             totalSessions={chaiLyticsData.totalSessions}
             lastAssignee={chaiLyticsData.lastAssignee}
+            currentUserName={profile?.name}
+            currentUserStats={chaiLyticsData.currentUserStats}
           />
         </Modal>
       )}

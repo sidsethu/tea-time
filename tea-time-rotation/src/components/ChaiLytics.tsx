@@ -7,11 +7,17 @@ interface ChaiLyticsProps {
   readonly topDrinkers: ReadonlyArray<LeaderboardEntry>;
   readonly totalSessions: number;
   readonly lastAssignee: string | null;
+  readonly currentUserName?: string;
+  readonly currentUserStats?: {
+    userData: LeaderboardEntry;
+    sponsorRank: number;
+    drinkerRank: number;
+  };
 }
 
 type Tab = 'sponsors' | 'drinkers';
 
-function ChaiLytics({ topSponsors, topDrinkers, totalSessions, lastAssignee }: ChaiLyticsProps) {
+function ChaiLytics({ topSponsors, topDrinkers, totalSessions, lastAssignee, currentUserName, currentUserStats }: ChaiLyticsProps) {
   const [activeTab, setActiveTab] = useState<Tab>('sponsors');
 
   return (
@@ -48,8 +54,24 @@ function ChaiLytics({ topSponsors, topDrinkers, totalSessions, lastAssignee }: C
         </button>
       </div>
       <div className="pt-4">
-        {activeTab === 'sponsors' && <Leaderboard entries={topSponsors} field="total_drinks_bought" />}
-        {activeTab === 'drinkers' && <Leaderboard entries={topDrinkers} field="drink_count" />}
+        {activeTab === 'sponsors' && (
+          <Leaderboard
+            entries={topSponsors}
+            field="total_drinks_bought"
+            currentUserName={currentUserName}
+            currentUserEntry={currentUserStats?.userData}
+            currentUserRank={currentUserStats?.sponsorRank}
+          />
+        )}
+        {activeTab === 'drinkers' && (
+          <Leaderboard
+            entries={topDrinkers}
+            field="drink_count"
+            currentUserName={currentUserName}
+            currentUserEntry={currentUserStats?.userData}
+            currentUserRank={currentUserStats?.drinkerRank}
+          />
+        )}
       </div>
     </div>
   );
