@@ -369,7 +369,18 @@ function App() {
 
       if (error) {
         console.error('Summarize function error:', error);
-        showError('Session Error', `Could not finalize the session: ${error.message}`);
+
+        // Handle race condition specifically
+        if (error.message?.includes('Session already summarized') ||
+            error.message?.includes('already been completed')) {
+          showError(
+            'Session Already Completed',
+            'Another admin just finished this session. Refreshing...'
+          );
+          setTimeout(() => window.location.reload(), 2000);
+        } else {
+          showError('Session Error', `Could not finalize the session: ${error.message}`);
+        }
         return;
       }
 

@@ -85,6 +85,62 @@ Deno.serve(async (req) => {
     });
   }
 
+  // Resolve summarizer from auth header
+  let summarizerUserId: string | null = null;
+  const { data: authUserResult } = await supabase.auth.getUser();
+  const authUserId = authUserResult?.user?.id ?? null;
+  if (authUserId) {
+    const { data: summarizer } = await supabase
+      .from('users')
+      .select('id, name')
+      .eq('auth_user_id', authUserId)
+      .single();
+    summarizerUserId = summarizer?.id ?? null;
+  }
+
+  // Atomic update: only succeeds if status is still 'active'
+  // This acts as a lock - only ONE request can successfully transition from active to completed
+  const { data: updatedSession, error: sessionUpdateError } = await supabase
+    .from('sessions')
+    .update({
+      status: 'completed',
+      ended_at: new Date().toISOString(),
+      assignee_name: assignee.name,
+      total_drinks_in_session: orders.length,
+      summarized_by: summarizerUserId,
+    })
+    .eq('id', session_id)
+    .eq('status', 'active')  // CRITICAL: Only update if still active
+    .select();
+
+  // Check if the update succeeded
+  if (!updatedSession || updatedSession.length === 0) {
+    // Session was already completed by another request
+    return new Response(
+      JSON.stringify({
+        error: 'Session already summarized',
+        message: 'This session has already been completed by another admin.'
+      }),
+      {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 409,  // Conflict
+      }
+    );
+  }
+
+  if (sessionUpdateError) {
+    return new Response(
+      JSON.stringify({ error: sessionUpdateError.message }),
+      {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 500,
+      }
+    );
+  }
+
+  // If we reach here, we successfully claimed the session completion
+  // Now proceed with user updates...
+
   // Update last order details for each user
   for (const order of orders) {
     if (order.user_id) {
@@ -117,30 +173,6 @@ Deno.serve(async (req) => {
     .eq('id', assignee.id);
 
   await supabase.rpc('increment_total_drinks_bought', { p_user_id: assignee.id, p_amount: orders.length });
-
-  // Resolve summarizer from auth header
-  let summarizerUserId: string | null = null;
-  const { data: authUserResult } = await supabase.auth.getUser();
-  const authUserId = authUserResult?.user?.id ?? null;
-  if (authUserId) {
-    const { data: summarizer } = await supabase
-      .from('users')
-      .select('id, name')
-      .eq('auth_user_id', authUserId)
-      .single();
-    summarizerUserId = summarizer?.id ?? null;
-  }
-
-  await supabase
-    .from('sessions')
-    .update({
-      status: 'completed',
-      ended_at: new Date().toISOString(),
-      assignee_name: assignee.name,
-      total_drinks_in_session: orders.length,
-      summarized_by: summarizerUserId,
-    })
-    .eq('id', session_id);
 
   return new Response(JSON.stringify({ assignee, committed: true }), {
     headers: { ...corsHeaders, 'Content-Type': 'application/json' },
