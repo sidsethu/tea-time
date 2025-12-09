@@ -129,14 +129,14 @@ function App() {
     const fetchAllData = async (currentSession: Session) => {
       const [ordersData, usersData] = await Promise.all([
         supabase.from('orders').select('*').eq('session_id', currentSession.id),
-        supabase.from('users').select('id, name, last_ordered_drink, last_sugar_level, profile_picture_url, total_drinks_bought, drink_count, last_assigned_at, roles:user_roles(roles(name))'),
+        supabase.from('users').select('id, name, last_ordered_drink, last_sugar_level, profile_picture_url, total_drinks_bought, drink_count, last_assigned_at, roles:user_roles(roles(name))').eq('isActive', true),
       ]);
       if (ordersData.data) setOrders(ordersData.data);
       if (usersData.data) {
           const transformedUsers = usersData.data.map(user => {
-              const roles = (user.roles as unknown as { roles: { name: string } }[]).map(
-                  (r) => r.roles.name
-              );
+              const roles = Array.isArray(user.roles)
+                  ? (user.roles as unknown as { roles: { name: string } }[]).map((r) => r.roles.name)
+                  : [];
               return { ...user, roles };
           });
           setUsers(transformedUsers as User[]);
@@ -235,14 +235,14 @@ function App() {
   const fetchAllData = async (currentSession: Session) => {
     const [ordersData, usersData] = await Promise.all([
       supabase.from('orders').select('*').eq('session_id', currentSession.id),
-      supabase.from('users').select('id, name, last_ordered_drink, last_sugar_level, profile_picture_url, roles:user_roles(roles(name))'),
+      supabase.from('users').select('id, name, last_ordered_drink, last_sugar_level, profile_picture_url, total_drinks_bought, drink_count, last_assigned_at, roles:user_roles(roles(name))').eq('isActive', true),
     ]);
     if (ordersData.data) setOrders(ordersData.data);
     if (usersData.data) {
         const transformedUsers = usersData.data.map(user => {
-            const roles = (user.roles as unknown as { roles: { name: string } }[]).map(
-                (r) => r.roles.name
-            );
+            const roles = Array.isArray(user.roles) 
+                ? (user.roles as unknown as { roles: { name: string } }[]).map((r) => r.roles.name)
+                : [];
             return { ...user, roles };
         });
         setUsers(transformedUsers as User[]);
