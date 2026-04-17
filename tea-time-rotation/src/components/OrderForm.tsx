@@ -69,6 +69,9 @@ const OrderForm = ({ session, orders, users, guestOrders, onOrderUpdate }: Order
   const longPressTimerRef = useRef<NodeJS.Timeout | null>(null);
   const longPressTriggeredRef = useRef(false);
   const [showUserStats, setShowUserStats] = useState<User | null>(null);
+  const [isBulkMode, setIsBulkMode] = useState(false);
+  const [selectedUsers, setSelectedUsers] = useState<string[]>([]);
+  const userSectionRef = useRef<HTMLDivElement>(null);
 
   // Guest drink form state
   const [showGuestForm, setShowGuestForm] = useState(false);
@@ -87,6 +90,7 @@ const OrderForm = ({ session, orders, users, guestOrders, onOrderUpdate }: Order
   }, []);
 
   useEffect(() => {
+    if (isBulkMode) return;
     if (selectedUser) {
       const existingOrder = orders.find((o) => o.user_id === selectedUser);
       if (existingOrder) {
@@ -100,11 +104,10 @@ const OrderForm = ({ session, orders, users, guestOrders, onOrderUpdate }: Order
         }
       }
     } else {
-      // Reset to default when no user is selected
       setDrinkType('Tea');
       setSugarLevel('Normal');
     }
-  }, [selectedUser, users, orders]);
+  }, [selectedUser, users, orders, isBulkMode]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -164,6 +167,96 @@ const OrderForm = ({ session, orders, users, guestOrders, onOrderUpdate }: Order
     setTimeout(() => {
       drinkSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }, 100); // A small delay to ensure the section is rendered
+  };
+
+  const handleModeSwitch = (bulk: boolean) => {
+    setIsBulkMode(bulk);
+    if (bulk) {
+      setSelectedUser('');
+    } else {
+      setSelectedUsers([]);
+    }
+  };
+
+  const handleBulkUserToggle = (userId: string) => {
+    setSelectedUsers(prev =>
+      prev.includes(userId)
+        ? prev.filter(id => id !== userId)
+        : [...prev, userId]
+    );
+  };
+
+  const handleBulkDrinkSelect = (drinkName: string) => {
+    setDrinkType(drinkName);
+    setTimeout(() => {
+      userSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 100);
+  };
+
+  const handleBulkSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (selectedUsers.length === 0) {
+      showError('Selection Required', 'Please select at least one user.');
+      return;
+    }
+
+    const deniedUsers: string[] = [];
+    for (const userId of selectedUsers) {
+      const isUpdating = submittedUsers.includes(userId);
+      if (isUpdating && !(profile?.permissions.includes('can_update_order') || profile?.id === userId)) {
+        const user = users.find(u => u.id === userId);
+        deniedUsers.push(user?.name || userId);
+      }
+    }
+
+    if (deniedUsers.length > 0) {
+      showError('Permission Denied', `You do not have permission to update orders for: ${deniedUsers.join(', ')}`);
+      return;
+    }
+
+    const results = await Promise.all(
+      selectedUsers.map(userId =>
+        supabase.from('orders').upsert(
+          {
+            session_id: session.id,
+            user_id: userId,
+            drink_type: drinkType,
+            sugar_level: sugarLevel,
+            is_excused: false,
+            created_at: new Date().toISOString(),
+          },
+          { onConflict: 'session_id,user_id' }
+        )
+      )
+    );
+
+    const failures = results.filter(r => r.error);
+    const successCount = results.length - failures.length;
+
+    if (failures.length > 0 && successCount === 0) {
+      showError('Bulk Order Failed', 'Could not submit any orders. Please try again.');
+      return;
+    }
+
+    const orderedNames = selectedUsers
+      .filter((_, i) => !results[i].error)
+      .map(id => users.find(u => u.id === id)?.name || 'Unknown');
+
+    setSelectedUsers([]);
+    setDrinkType('Tea');
+    setSugarLevel('Normal');
+
+    if (onOrderUpdate) onOrderUpdate();
+
+    if (failures.length > 0) {
+      showSuccess('Partial Success', `Ordered ${drinkType} for ${successCount} of ${selectedUsers.length} users: ${orderedNames.join(', ')}. ${failures.length} order(s) failed.`);
+    } else {
+      showSuccess('Bulk Order Placed!', `Ordered ${drinkType} for ${successCount} user${successCount > 1 ? 's' : ''}: ${orderedNames.join(', ')}`);
+    }
+
+    setTimeout(() => {
+      topOfPageRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }, 100);
   };
 
   const handleKettleClick = () => {
@@ -296,10 +389,12 @@ const OrderForm = ({ session, orders, users, guestOrders, onOrderUpdate }: Order
     }
     
     if (isActive) {
-      // Allow selection for active users
-      handleUserSelect(userId);
+      if (isBulkMode) {
+        handleBulkUserToggle(userId);
+      } else {
+        handleUserSelect(userId);
+      }
     } else {
-      // Show stats for retired users
       const user = users.find(u => u.id === userId);
       if (user) {
         setShowUserStats(user);
@@ -411,226 +506,484 @@ const OrderForm = ({ session, orders, users, guestOrders, onOrderUpdate }: Order
           )}
         </div>
         
-        <h2 className="text-xl sm:text-2xl font-bold text-gray-900">Place Your Order</h2>
-        <p className="text-gray-700 text-sm sm:text-base font-medium">Choose your perfect brew for this tea time</p>
+        {/* Mode Toggle */}
+        <div className="flex bg-gray-100 rounded-xl p-1 max-w-xs mx-auto">
+          <button
+            type="button"
+            onClick={() => handleModeSwitch(false)}
+            className={`flex-1 py-2 px-4 rounded-lg text-sm font-semibold transition-all duration-200 ${
+              !isBulkMode
+                ? 'bg-white shadow-md text-green-700'
+                : 'text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            Single Order
+          </button>
+          <button
+            type="button"
+            onClick={() => handleModeSwitch(true)}
+            className={`flex-1 py-2 px-4 rounded-lg text-sm font-semibold transition-all duration-200 ${
+              isBulkMode
+                ? 'bg-white shadow-md text-indigo-700'
+                : 'text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            Bulk Order
+          </button>
+        </div>
+
+        <h2 className="text-xl sm:text-2xl font-bold text-gray-900">
+          {isBulkMode ? 'Place Bulk Order' : 'Place Your Order'}
+        </h2>
+        <p className="text-gray-700 text-sm sm:text-base font-medium">
+          {isBulkMode ? 'Order the same drink for multiple people' : 'Choose your perfect brew for this tea time'}
+        </p>
       </div>
 
-      <form onSubmit={handleSubmit} className="space-y-6 sm:space-y-8">
-        {/* Compact User Selection */}
-        <div className="space-y-3 sm:space-y-4 animate-slide-up">
-          <div className="text-center">
-            <label className="flex items-center justify-center text-base sm:text-lg font-bold text-gray-800 mb-1">
-              <span className="mr-2 text-xl sm:text-2xl">👤</span>
-              Select Your Name
-            </label>
-            <p className="text-gray-600 text-xs sm:text-sm">Tap your name to place an order</p>
-          </div>
-          
-          {/* Compact Grid Layout for User Selection */}
-          <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-5 gap-2">
-            {users.sort((a, b) => {
-              // Sort active users first, then by name
-              if (a.isActive !== b.isActive) return a.isActive ? -1 : 1;
-              return a.name.localeCompare(b.name);
-            }).map((user) => {
-              const isSelected = selectedUser === user.id;
-              const hasOrdered = submittedUsers.includes(user.id);
-              const isDisabled = !user.isActive;
-              
-              return (
-                <button
-                  key={user.id}
-                  type="button"
-                  onClick={() => handleUserTileClick(user.id, user.isActive)}
-                  onMouseDown={() => handleLongPressStart(user.id)}
-                  onMouseUp={handleLongPressEnd}
-                  onMouseLeave={handleLongPressEnd}
-                  onTouchStart={() => handleLongPressStart(user.id)}
-                  onTouchEnd={handleLongPressEnd}
-                  className={`relative p-2 sm:p-3 rounded-lg text-center transition-all duration-300 border-2 min-h-[5rem] sm:min-h-[6rem] flex flex-col items-center justify-center touch-manipulation ${
-                    isDisabled
-                      ? 'bg-gray-200 border-gray-300 text-gray-500 cursor-not-allowed opacity-60'
-                      : isSelected
-                      ? 'bg-gradient-to-br from-green-500 to-green-600 text-white border-green-600 shadow-lg scale-105'
-                      : hasOrdered
-                      ? 'bg-blue-50 border-blue-300 text-blue-800 hover:bg-blue-100 active:bg-blue-200'
-                      : 'bg-white border-gray-200 text-gray-800 hover:border-green-300 hover:bg-green-50 active:bg-green-100'
-                  }`}
-                >
-                  {/* Retired stamp for disabled users */}
-                  {isDisabled && (
-                    <div className="absolute inset-0 flex items-center justify-center z-10 pointer-events-none">
-                      <span className="bg-red-500 text-white text-xs font-bold px-3 py-1 rounded-full border-2 border-red-600 shadow-lg transform -rotate-12 uppercase tracking-wider">
-                        Retired
-                      </span>
-                    </div>
-                  )}
-                  
-                  {user.roles.includes('super_admin') ? (
-                    <div className="absolute top-1 right-1">
-                      🛠️
-                    </div>
-                  ) : user.roles.includes('admin') && (
-                    <div className="absolute top-1 right-1 text-yellow-400">
-                      💎
-                    </div>
-                  )}
-                  {hasOrdered && !isSelected && (
-                    <div className="absolute -top-1 -right-1 w-4 h-4 sm:w-5 sm:h-5 bg-blue-500 text-white rounded-full flex items-center justify-center text-xs font-bold">
-                      ✓
-                    </div>
-                  )}
-                  <div className={`w-8 h-8 sm:w-10 sm:h-10 rounded-full flex items-center justify-center mb-1 overflow-hidden ${isDisabled ? 'bg-gray-300' : ''}`}>
-                    {user.profile_picture_url ? (
-                      <img src={user.profile_picture_url} alt={user.name} className={`w-full h-full object-cover ${isDisabled ? 'grayscale' : ''}`} />
-                    ) : (
-                      <span className={`text-lg font-bold ${isDisabled ? 'text-gray-400' : ''}`}>{user.name.charAt(0)}</span>
+      <form onSubmit={isBulkMode ? handleBulkSubmit : handleSubmit} className="space-y-6 sm:space-y-8">
+        {isBulkMode ? (
+          <>
+            {/* Bulk Mode: Drink Selection First */}
+            <div ref={drinkSectionRef} className="space-y-3 sm:space-y-4 animate-slide-up">
+              <div className="text-center">
+                <label className="flex items-center justify-center text-base sm:text-lg font-bold text-gray-800 mb-1">
+                  <span className="mr-2 text-xl sm:text-2xl">🍵</span>
+                  Choose a Drink
+                </label>
+                <p className="text-gray-600 text-xs sm:text-sm">This drink will be ordered for all selected users</p>
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
+                {drinks.map((drink) => (
+                  <button
+                    key={drink.name}
+                    type="button"
+                    onClick={() => handleBulkDrinkSelect(drink.name)}
+                    className={`relative p-3 sm:p-4 rounded-lg text-center transition-all duration-300 group border-2 min-h-[4rem] sm:min-h-[5rem] flex flex-col items-center justify-center touch-manipulation shadow-sm hover:shadow-lg ${
+                      drinkType === drink.name
+                        ? 'bg-gradient-to-br from-indigo-500 to-indigo-600 text-white shadow-lg scale-105 border-indigo-600 ring-2 ring-indigo-200 ring-offset-2'
+                        : 'bg-gradient-to-br from-white to-gray-50 hover:bg-indigo-50 hover:scale-105 active:bg-indigo-100 border-gray-200 hover:border-indigo-300 shadow-md'
+                    }`}
+                  >
+                    {drink.is_popular && (
+                      <div className="absolute -top-1 -right-1 bg-orange-500 text-white text-xs px-1 py-0.5 rounded-full font-bold">
+                        🔥
+                      </div>
                     )}
-                  </div>
-                  <div className={`text-xs font-semibold leading-tight text-center ${
-                    isSelected ? 'text-white' : hasOrdered ? 'text-blue-800' : isDisabled ? 'text-gray-400' : 'text-gray-800'
-                  }`}>
-                    {user.name}
-                  </div>
-                  {isSelected && !isDisabled && (
-                    <div className="absolute inset-0 rounded-lg bg-gradient-to-r from-white/20 to-transparent animate-pulse"></div>
-                  )}
-                </button>
-              );
-            })}
-          </div>
-          
-          {selectedUser && (
-            <div className="text-center p-3 sm:p-4 bg-gradient-to-r from-green-50 to-emerald-50 border-2 border-green-200 rounded-xl animate-slide-up shadow-sm">
-              <div className="flex items-center justify-center space-x-2">
-                <span className="text-green-600 text-lg">📋</span>
-                <span className="text-green-700 font-semibold text-sm sm:text-base">
-                  Selected: <span className="font-bold text-green-800">{users.find(u => u.id === selectedUser)?.name}</span>
-                </span>
-                <span className="text-green-600 text-sm">
-                  {submittedUsers.includes(selectedUser) ? '🔄 updating' : '✨ new order'}
-                </span>
+                    <div className="text-xl sm:text-2xl mb-1 group-hover:animate-bounce">{drink.emoji}</div>
+                    <div className={`font-semibold text-xs sm:text-sm ${drinkType === drink.name ? 'text-white' : 'text-gray-800'}`}>
+                      {drink.name}
+                    </div>
+                    {drinkType === drink.name && (
+                      <div className="absolute inset-0 rounded-lg bg-gradient-to-r from-white/20 to-transparent animate-pulse"></div>
+                    )}
+                  </button>
+                ))}
               </div>
             </div>
-          )}
-        </div>
 
-        {/* Compact Drink Selection */}
-        <div ref={drinkSectionRef} className="space-y-3 sm:space-y-4 animate-slide-up" style={{animationDelay: '0.1s'}}>
-          <div className="text-center">
-            <label className="flex items-center justify-center text-base sm:text-lg font-bold text-gray-800 mb-1">
-              <span className="mr-2 text-xl sm:text-2xl">🍵</span>
-              Choose Your Drink
-            </label>
-            <p className="text-gray-600 text-xs sm:text-sm">Select your perfect beverage</p>
-          </div>
-          
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
-            {drinks.map((drink) => (
-              <button
-                key={drink.name}
-                type="button"
-                onClick={() => setDrinkType(drink.name)}
-                className={`relative p-3 sm:p-4 rounded-lg text-center transition-all duration-300 group border-2 min-h-[4rem] sm:min-h-[5rem] flex flex-col items-center justify-center touch-manipulation shadow-sm hover:shadow-lg ${
-                  drinkType === drink.name
-                    ? 'bg-gradient-to-br from-green-500 to-green-600 text-white shadow-lg scale-105 border-green-600 ring-2 ring-green-200 ring-offset-2'
-                    : 'bg-gradient-to-br from-white to-gray-50 hover:bg-green-50 hover:scale-105 active:bg-green-100 border-gray-200 hover:border-green-300 shadow-md'
-                }`}
-              >
-                {drink.is_popular && (
-                  <div className="absolute -top-1 -right-1 bg-orange-500 text-white text-xs px-1 py-0.5 rounded-full font-bold">
-                    🔥
-                  </div>
-                )}
-                <div className="text-xl sm:text-2xl mb-1 group-hover:animate-bounce">{drink.emoji}</div>
-                <div className={`font-semibold text-xs sm:text-sm ${drinkType === drink.name ? 'text-white' : 'text-gray-800'}`}>
-                  {drink.name}
-                </div>
-                {drinkType === drink.name && (
-                  <div className="absolute inset-0 rounded-lg bg-gradient-to-r from-white/20 to-transparent animate-pulse"></div>
-                )}
-              </button>
-            ))}
-          </div>
-        </div>
+            {/* Bulk Mode: Sugar Selection */}
+            <div className="space-y-3 sm:space-y-4 animate-slide-up" style={{animationDelay: '0.1s'}}>
+              <div className="text-center">
+                <label className="flex items-center justify-center text-base sm:text-lg font-bold text-gray-800 mb-1">
+                  <span className="mr-2 text-xl sm:text-2xl">🍯</span>
+                  Sugar Preference
+                </label>
+                <p className="text-gray-600 text-xs sm:text-sm">Same sugar level for all selected users</p>
+              </div>
 
-        {/* Compact Sugar Selection */}
-        <div className="space-y-3 sm:space-y-4 animate-slide-up" style={{animationDelay: '0.2s'}}>
-          <div className="text-center">
-            <label className="flex items-center justify-center text-base sm:text-lg font-bold text-gray-800 mb-1">
-              <span className="mr-2 text-xl sm:text-2xl">🍯</span>
-              Sugar Preference
-            </label>
-            <p className="text-gray-600 text-xs sm:text-sm">How sweet do you like it?</p>
-          </div>
-          
-          <div className="grid grid-cols-3 gap-2">
-            {SUGAR_LEVELS.map((sugar) => (
-              <button
-                key={sugar.level}
-                type="button"
-                onClick={() => setSugarLevel(sugar.level)}
-                className={`relative px-3 sm:px-4 py-3 sm:py-4 rounded-lg font-semibold transition-all duration-300 group border-2 min-h-[3.5rem] sm:min-h-[4rem] flex flex-col items-center justify-center touch-manipulation shadow-sm hover:shadow-lg ${
-                  sugarLevel === sugar.level
-                    ? 'bg-gradient-to-br from-green-500 to-green-600 text-white shadow-lg scale-105 border-green-600 ring-2 ring-green-200 ring-offset-2'
-                    : 'bg-gradient-to-br from-white to-gray-50 hover:bg-green-50 hover:scale-105 active:bg-green-100 border-gray-200 hover:border-green-300 shadow-md'
-                }`}
-              >
-                <div className="text-lg sm:text-xl mb-1 group-hover:animate-bounce">{sugar.emoji}</div>
-                <div className={`text-xs font-semibold text-center ${sugarLevel === sugar.level ? 'text-white' : 'text-gray-800'}`}>
-                  {sugar.level}
-                </div>
-                {sugarLevel === sugar.level && (
-                  <div className="absolute inset-0 rounded-lg bg-gradient-to-r from-white/20 to-transparent animate-pulse"></div>
-                )}
-              </button>
-            ))}
-          </div>
-        </div>
+              <div className="grid grid-cols-3 gap-2">
+                {SUGAR_LEVELS.map((sugar) => (
+                  <button
+                    key={sugar.level}
+                    type="button"
+                    onClick={() => setSugarLevel(sugar.level)}
+                    className={`relative px-3 sm:px-4 py-3 sm:py-4 rounded-lg font-semibold transition-all duration-300 group border-2 min-h-[3.5rem] sm:min-h-[4rem] flex flex-col items-center justify-center touch-manipulation shadow-sm hover:shadow-lg ${
+                      sugarLevel === sugar.level
+                        ? 'bg-gradient-to-br from-indigo-500 to-indigo-600 text-white shadow-lg scale-105 border-indigo-600 ring-2 ring-indigo-200 ring-offset-2'
+                        : 'bg-gradient-to-br from-white to-gray-50 hover:bg-indigo-50 hover:scale-105 active:bg-indigo-100 border-gray-200 hover:border-indigo-300 shadow-md'
+                    }`}
+                  >
+                    <div className="text-lg sm:text-xl mb-1 group-hover:animate-bounce">{sugar.emoji}</div>
+                    <div className={`text-xs font-semibold text-center ${sugarLevel === sugar.level ? 'text-white' : 'text-gray-800'}`}>
+                      {sugar.level}
+                    </div>
+                    {sugarLevel === sugar.level && (
+                      <div className="absolute inset-0 rounded-lg bg-gradient-to-r from-white/20 to-transparent animate-pulse"></div>
+                    )}
+                  </button>
+                ))}
+              </div>
+            </div>
 
-        {/* Price preview */}
-        {drinkPrices.length > 0 && (
-          <div className="text-center py-2">
-            <span className="inline-block bg-green-50 border border-green-200 rounded-full px-4 py-1 text-sm font-semibold text-green-800">
-              💰 Price: ₹{resolvePrice(drinkType, sugarLevel, drinkPrices)}
-            </span>
-          </div>
-        )}
-
-        {/* Enhanced Mobile-Friendly Action Buttons */}
-        <div className="space-y-6 pt-8 animate-slide-up" style={{animationDelay: '0.3s'}}>
-          <div className="flex flex-col gap-4">
-            <button
-              type="submit"
-              disabled={!selectedUser}
-              className={`w-full py-4 sm:py-5 px-6 text-lg sm:text-xl font-bold rounded-2xl transition-all duration-300 touch-manipulation shadow-lg hover:shadow-xl ${
-                !selectedUser 
-                  ? 'bg-gradient-to-r from-gray-300 to-gray-400 text-gray-500 cursor-not-allowed shadow-md' 
-                  : 'bg-gradient-to-r from-green-500 to-green-600 text-white shadow-lg hover:from-green-600 hover:to-green-700 hover:scale-105 active:scale-95 ring-2 ring-green-200 ring-offset-2'
-              }`}
-            >
-              <span className="flex items-center justify-center">
-                <span className="mr-3 text-2xl">
-                  {!selectedUser ? '❌' : hasSubmitted ? '🔄' : '✅'}
+            {/* Bulk Mode: Price Preview */}
+            {drinkPrices.length > 0 && (
+              <div className="text-center py-2">
+                <span className="inline-block bg-indigo-50 border border-indigo-200 rounded-full px-4 py-1 text-sm font-semibold text-indigo-800">
+                  💰 Price: ₹{resolvePrice(drinkType, sugarLevel, drinkPrices)}
+                  {selectedUsers.length > 1 && ` x ${selectedUsers.length} = ₹${resolvePrice(drinkType, sugarLevel, drinkPrices) * selectedUsers.length}`}
                 </span>
-                {!selectedUser ? 'Select a Name First' : hasSubmitted ? 'Update Order' : 'Submit Order'}
-              </span>
-            </button>
-            
-            {hasSubmitted && (profile?.permissions.includes('can_cancel_order') || profile?.id === selectedUser) && (
+              </div>
+            )}
+
+            {/* Bulk Mode: Multi-Select User Grid */}
+            <div ref={userSectionRef} className="space-y-3 sm:space-y-4 animate-slide-up" style={{animationDelay: '0.2s'}}>
+              <div className="text-center">
+                <label className="flex items-center justify-center text-base sm:text-lg font-bold text-gray-800 mb-1">
+                  <span className="mr-2 text-xl sm:text-2xl">👥</span>
+                  Select Users
+                </label>
+                <p className="text-gray-600 text-xs sm:text-sm">Tap to select multiple users for this order</p>
+              </div>
+
+              {/* Select All / Clear All */}
+              <div className="flex justify-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setSelectedUsers(users.filter(u => u.isActive).map(u => u.id))}
+                  className="px-3 py-1 text-xs font-semibold text-indigo-700 bg-indigo-50 border border-indigo-200 rounded-full hover:bg-indigo-100 transition-colors"
+                >
+                  Select All
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSelectedUsers([])}
+                  className="px-3 py-1 text-xs font-semibold text-gray-600 bg-gray-100 border border-gray-200 rounded-full hover:bg-gray-200 transition-colors"
+                >
+                  Clear All
+                </button>
+              </div>
+
+              <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-5 gap-2">
+                {users.sort((a, b) => {
+                  if (a.isActive !== b.isActive) return a.isActive ? -1 : 1;
+                  return a.name.localeCompare(b.name);
+                }).map((user) => {
+                  const isBulkSelected = selectedUsers.includes(user.id);
+                  const hasOrdered = submittedUsers.includes(user.id);
+                  const isDisabled = !user.isActive;
+
+                  return (
+                    <button
+                      key={user.id}
+                      type="button"
+                      onClick={() => handleUserTileClick(user.id, user.isActive)}
+                      onMouseDown={() => handleLongPressStart(user.id)}
+                      onMouseUp={handleLongPressEnd}
+                      onMouseLeave={handleLongPressEnd}
+                      onTouchStart={() => handleLongPressStart(user.id)}
+                      onTouchEnd={handleLongPressEnd}
+                      className={`relative p-2 sm:p-3 rounded-lg text-center transition-all duration-300 border-2 min-h-[5rem] sm:min-h-[6rem] flex flex-col items-center justify-center touch-manipulation ${
+                        isDisabled
+                          ? 'bg-gray-200 border-gray-300 text-gray-500 cursor-not-allowed opacity-60'
+                          : isBulkSelected
+                          ? 'bg-gradient-to-br from-indigo-500 to-indigo-600 text-white border-indigo-600 shadow-lg scale-105'
+                          : hasOrdered
+                          ? 'bg-blue-50 border-blue-300 text-blue-800 hover:bg-blue-100 active:bg-blue-200'
+                          : 'bg-white border-gray-200 text-gray-800 hover:border-indigo-300 hover:bg-indigo-50 active:bg-indigo-100'
+                      }`}
+                    >
+                      {isDisabled && (
+                        <div className="absolute inset-0 flex items-center justify-center z-10 pointer-events-none">
+                          <span className="bg-red-500 text-white text-xs font-bold px-3 py-1 rounded-full border-2 border-red-600 shadow-lg transform -rotate-12 uppercase tracking-wider">
+                            Retired
+                          </span>
+                        </div>
+                      )}
+
+                      {user.roles.includes('super_admin') ? (
+                        <div className="absolute top-1 right-1">
+                          🛠️
+                        </div>
+                      ) : user.roles.includes('admin') && (
+                        <div className="absolute top-1 right-1 text-yellow-400">
+                          💎
+                        </div>
+                      )}
+                      {isBulkSelected && (
+                        <div className="absolute -top-1 -right-1 w-5 h-5 bg-indigo-700 text-white rounded-full flex items-center justify-center text-xs font-bold">
+                          ✓
+                        </div>
+                      )}
+                      {!isBulkSelected && hasOrdered && (
+                        <div className="absolute -top-1 -right-1 w-4 h-4 sm:w-5 sm:h-5 bg-blue-500 text-white rounded-full flex items-center justify-center text-xs font-bold">
+                          ✓
+                        </div>
+                      )}
+                      <div className={`w-8 h-8 sm:w-10 sm:h-10 rounded-full flex items-center justify-center mb-1 overflow-hidden ${isDisabled ? 'bg-gray-300' : ''}`}>
+                        {user.profile_picture_url ? (
+                          <img src={user.profile_picture_url} alt={user.name} className={`w-full h-full object-cover ${isDisabled ? 'grayscale' : ''}`} />
+                        ) : (
+                          <span className={`text-lg font-bold ${isDisabled ? 'text-gray-400' : ''}`}>{user.name.charAt(0)}</span>
+                        )}
+                      </div>
+                      <div className={`text-xs font-semibold leading-tight text-center ${
+                        isBulkSelected ? 'text-white' : hasOrdered ? 'text-blue-800' : isDisabled ? 'text-gray-400' : 'text-gray-800'
+                      }`}>
+                        {user.name}
+                      </div>
+                      {isBulkSelected && !isDisabled && (
+                        <div className="absolute inset-0 rounded-lg bg-gradient-to-r from-white/20 to-transparent animate-pulse"></div>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Bulk Selection Summary */}
+              {selectedUsers.length > 0 && (
+                <div className="text-center p-3 sm:p-4 bg-gradient-to-r from-indigo-50 to-purple-50 border-2 border-indigo-200 rounded-xl animate-slide-up shadow-sm">
+                  <div className="flex items-center justify-center space-x-2">
+                    <span className="text-indigo-600 text-lg">📋</span>
+                    <span className="text-indigo-700 font-semibold text-sm sm:text-base">
+                      Selected: <span className="font-bold text-indigo-800">{selectedUsers.length} user{selectedUsers.length > 1 ? 's' : ''}</span>
+                    </span>
+                  </div>
+                  <div className="text-indigo-600 text-xs mt-1">
+                    {selectedUsers.map(id => users.find(u => u.id === id)?.name).filter(Boolean).join(', ')}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Bulk Mode: Submit Button */}
+            <div className="space-y-6 pt-8 animate-slide-up" style={{animationDelay: '0.3s'}}>
               <button
-                type="button"
-                onClick={handleRevokeOrder}
-                className="w-full py-4 sm:py-5 px-6 text-lg sm:text-xl font-bold text-white bg-gradient-to-r from-red-500 to-red-600 rounded-2xl hover:from-red-600 hover:to-red-700 hover:scale-105 active:scale-95 transition-all duration-300 shadow-lg hover:shadow-xl touch-manipulation ring-2 ring-red-200 ring-offset-2"
+                type="submit"
+                disabled={selectedUsers.length === 0}
+                className={`w-full py-4 sm:py-5 px-6 text-lg sm:text-xl font-bold rounded-2xl transition-all duration-300 touch-manipulation shadow-lg hover:shadow-xl ${
+                  selectedUsers.length === 0
+                    ? 'bg-gradient-to-r from-gray-300 to-gray-400 text-gray-500 cursor-not-allowed shadow-md'
+                    : 'bg-gradient-to-r from-indigo-500 to-indigo-600 text-white shadow-lg hover:from-indigo-600 hover:to-indigo-700 hover:scale-105 active:scale-95 ring-2 ring-indigo-200 ring-offset-2'
+                }`}
               >
                 <span className="flex items-center justify-center">
-                  <span className="mr-3 text-2xl">🗑️</span>
-                  Cancel My Order
+                  <span className="mr-3 text-2xl">
+                    {selectedUsers.length === 0 ? '❌' : '📦'}
+                  </span>
+                  {selectedUsers.length === 0
+                    ? 'Select Users First'
+                    : `Order ${drinkType} for ${selectedUsers.length} User${selectedUsers.length > 1 ? 's' : ''}`}
                 </span>
               </button>
+            </div>
+          </>
+        ) : (
+          <>
+            {/* Single Mode: User Selection First (existing flow) */}
+            <div className="space-y-3 sm:space-y-4 animate-slide-up">
+              <div className="text-center">
+                <label className="flex items-center justify-center text-base sm:text-lg font-bold text-gray-800 mb-1">
+                  <span className="mr-2 text-xl sm:text-2xl">👤</span>
+                  Select Your Name
+                </label>
+                <p className="text-gray-600 text-xs sm:text-sm">Tap your name to place an order</p>
+              </div>
+
+              <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-5 gap-2">
+                {users.sort((a, b) => {
+                  if (a.isActive !== b.isActive) return a.isActive ? -1 : 1;
+                  return a.name.localeCompare(b.name);
+                }).map((user) => {
+                  const isSelected = selectedUser === user.id;
+                  const hasOrdered = submittedUsers.includes(user.id);
+                  const isDisabled = !user.isActive;
+
+                  return (
+                    <button
+                      key={user.id}
+                      type="button"
+                      onClick={() => handleUserTileClick(user.id, user.isActive)}
+                      onMouseDown={() => handleLongPressStart(user.id)}
+                      onMouseUp={handleLongPressEnd}
+                      onMouseLeave={handleLongPressEnd}
+                      onTouchStart={() => handleLongPressStart(user.id)}
+                      onTouchEnd={handleLongPressEnd}
+                      className={`relative p-2 sm:p-3 rounded-lg text-center transition-all duration-300 border-2 min-h-[5rem] sm:min-h-[6rem] flex flex-col items-center justify-center touch-manipulation ${
+                        isDisabled
+                          ? 'bg-gray-200 border-gray-300 text-gray-500 cursor-not-allowed opacity-60'
+                          : isSelected
+                          ? 'bg-gradient-to-br from-green-500 to-green-600 text-white border-green-600 shadow-lg scale-105'
+                          : hasOrdered
+                          ? 'bg-blue-50 border-blue-300 text-blue-800 hover:bg-blue-100 active:bg-blue-200'
+                          : 'bg-white border-gray-200 text-gray-800 hover:border-green-300 hover:bg-green-50 active:bg-green-100'
+                      }`}
+                    >
+                      {isDisabled && (
+                        <div className="absolute inset-0 flex items-center justify-center z-10 pointer-events-none">
+                          <span className="bg-red-500 text-white text-xs font-bold px-3 py-1 rounded-full border-2 border-red-600 shadow-lg transform -rotate-12 uppercase tracking-wider">
+                            Retired
+                          </span>
+                        </div>
+                      )}
+
+                      {user.roles.includes('super_admin') ? (
+                        <div className="absolute top-1 right-1">
+                          🛠️
+                        </div>
+                      ) : user.roles.includes('admin') && (
+                        <div className="absolute top-1 right-1 text-yellow-400">
+                          💎
+                        </div>
+                      )}
+                      {hasOrdered && !isSelected && (
+                        <div className="absolute -top-1 -right-1 w-4 h-4 sm:w-5 sm:h-5 bg-blue-500 text-white rounded-full flex items-center justify-center text-xs font-bold">
+                          ✓
+                        </div>
+                      )}
+                      <div className={`w-8 h-8 sm:w-10 sm:h-10 rounded-full flex items-center justify-center mb-1 overflow-hidden ${isDisabled ? 'bg-gray-300' : ''}`}>
+                        {user.profile_picture_url ? (
+                          <img src={user.profile_picture_url} alt={user.name} className={`w-full h-full object-cover ${isDisabled ? 'grayscale' : ''}`} />
+                        ) : (
+                          <span className={`text-lg font-bold ${isDisabled ? 'text-gray-400' : ''}`}>{user.name.charAt(0)}</span>
+                        )}
+                      </div>
+                      <div className={`text-xs font-semibold leading-tight text-center ${
+                        isSelected ? 'text-white' : hasOrdered ? 'text-blue-800' : isDisabled ? 'text-gray-400' : 'text-gray-800'
+                      }`}>
+                        {user.name}
+                      </div>
+                      {isSelected && !isDisabled && (
+                        <div className="absolute inset-0 rounded-lg bg-gradient-to-r from-white/20 to-transparent animate-pulse"></div>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {selectedUser && (
+                <div className="text-center p-3 sm:p-4 bg-gradient-to-r from-green-50 to-emerald-50 border-2 border-green-200 rounded-xl animate-slide-up shadow-sm">
+                  <div className="flex items-center justify-center space-x-2">
+                    <span className="text-green-600 text-lg">📋</span>
+                    <span className="text-green-700 font-semibold text-sm sm:text-base">
+                      Selected: <span className="font-bold text-green-800">{users.find(u => u.id === selectedUser)?.name}</span>
+                    </span>
+                    <span className="text-green-600 text-sm">
+                      {submittedUsers.includes(selectedUser) ? '🔄 updating' : '✨ new order'}
+                    </span>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Single Mode: Drink Selection */}
+            <div ref={drinkSectionRef} className="space-y-3 sm:space-y-4 animate-slide-up" style={{animationDelay: '0.1s'}}>
+              <div className="text-center">
+                <label className="flex items-center justify-center text-base sm:text-lg font-bold text-gray-800 mb-1">
+                  <span className="mr-2 text-xl sm:text-2xl">🍵</span>
+                  Choose Your Drink
+                </label>
+                <p className="text-gray-600 text-xs sm:text-sm">Select your perfect beverage</p>
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
+                {drinks.map((drink) => (
+                  <button
+                    key={drink.name}
+                    type="button"
+                    onClick={() => setDrinkType(drink.name)}
+                    className={`relative p-3 sm:p-4 rounded-lg text-center transition-all duration-300 group border-2 min-h-[4rem] sm:min-h-[5rem] flex flex-col items-center justify-center touch-manipulation shadow-sm hover:shadow-lg ${
+                      drinkType === drink.name
+                        ? 'bg-gradient-to-br from-green-500 to-green-600 text-white shadow-lg scale-105 border-green-600 ring-2 ring-green-200 ring-offset-2'
+                        : 'bg-gradient-to-br from-white to-gray-50 hover:bg-green-50 hover:scale-105 active:bg-green-100 border-gray-200 hover:border-green-300 shadow-md'
+                    }`}
+                  >
+                    {drink.is_popular && (
+                      <div className="absolute -top-1 -right-1 bg-orange-500 text-white text-xs px-1 py-0.5 rounded-full font-bold">
+                        🔥
+                      </div>
+                    )}
+                    <div className="text-xl sm:text-2xl mb-1 group-hover:animate-bounce">{drink.emoji}</div>
+                    <div className={`font-semibold text-xs sm:text-sm ${drinkType === drink.name ? 'text-white' : 'text-gray-800'}`}>
+                      {drink.name}
+                    </div>
+                    {drinkType === drink.name && (
+                      <div className="absolute inset-0 rounded-lg bg-gradient-to-r from-white/20 to-transparent animate-pulse"></div>
+                    )}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Single Mode: Sugar Selection */}
+            <div className="space-y-3 sm:space-y-4 animate-slide-up" style={{animationDelay: '0.2s'}}>
+              <div className="text-center">
+                <label className="flex items-center justify-center text-base sm:text-lg font-bold text-gray-800 mb-1">
+                  <span className="mr-2 text-xl sm:text-2xl">🍯</span>
+                  Sugar Preference
+                </label>
+                <p className="text-gray-600 text-xs sm:text-sm">How sweet do you like it?</p>
+              </div>
+
+              <div className="grid grid-cols-3 gap-2">
+                {SUGAR_LEVELS.map((sugar) => (
+                  <button
+                    key={sugar.level}
+                    type="button"
+                    onClick={() => setSugarLevel(sugar.level)}
+                    className={`relative px-3 sm:px-4 py-3 sm:py-4 rounded-lg font-semibold transition-all duration-300 group border-2 min-h-[3.5rem] sm:min-h-[4rem] flex flex-col items-center justify-center touch-manipulation shadow-sm hover:shadow-lg ${
+                      sugarLevel === sugar.level
+                        ? 'bg-gradient-to-br from-green-500 to-green-600 text-white shadow-lg scale-105 border-green-600 ring-2 ring-green-200 ring-offset-2'
+                        : 'bg-gradient-to-br from-white to-gray-50 hover:bg-green-50 hover:scale-105 active:bg-green-100 border-gray-200 hover:border-green-300 shadow-md'
+                    }`}
+                  >
+                    <div className="text-lg sm:text-xl mb-1 group-hover:animate-bounce">{sugar.emoji}</div>
+                    <div className={`text-xs font-semibold text-center ${sugarLevel === sugar.level ? 'text-white' : 'text-gray-800'}`}>
+                      {sugar.level}
+                    </div>
+                    {sugarLevel === sugar.level && (
+                      <div className="absolute inset-0 rounded-lg bg-gradient-to-r from-white/20 to-transparent animate-pulse"></div>
+                    )}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Single Mode: Price Preview */}
+            {drinkPrices.length > 0 && (
+              <div className="text-center py-2">
+                <span className="inline-block bg-green-50 border border-green-200 rounded-full px-4 py-1 text-sm font-semibold text-green-800">
+                  💰 Price: ₹{resolvePrice(drinkType, sugarLevel, drinkPrices)}
+                </span>
+              </div>
             )}
-          </div>
-        </div>
+
+            {/* Single Mode: Action Buttons */}
+            <div className="space-y-6 pt-8 animate-slide-up" style={{animationDelay: '0.3s'}}>
+              <div className="flex flex-col gap-4">
+                <button
+                  type="submit"
+                  disabled={!selectedUser}
+                  className={`w-full py-4 sm:py-5 px-6 text-lg sm:text-xl font-bold rounded-2xl transition-all duration-300 touch-manipulation shadow-lg hover:shadow-xl ${
+                    !selectedUser
+                      ? 'bg-gradient-to-r from-gray-300 to-gray-400 text-gray-500 cursor-not-allowed shadow-md'
+                      : 'bg-gradient-to-r from-green-500 to-green-600 text-white shadow-lg hover:from-green-600 hover:to-green-700 hover:scale-105 active:scale-95 ring-2 ring-green-200 ring-offset-2'
+                  }`}
+                >
+                  <span className="flex items-center justify-center">
+                    <span className="mr-3 text-2xl">
+                      {!selectedUser ? '❌' : hasSubmitted ? '🔄' : '✅'}
+                    </span>
+                    {!selectedUser ? 'Select a Name First' : hasSubmitted ? 'Update Order' : 'Submit Order'}
+                  </span>
+                </button>
+
+                {hasSubmitted && (profile?.permissions.includes('can_cancel_order') || profile?.id === selectedUser) && (
+                  <button
+                    type="button"
+                    onClick={handleRevokeOrder}
+                    className="w-full py-4 sm:py-5 px-6 text-lg sm:text-xl font-bold text-white bg-gradient-to-r from-red-500 to-red-600 rounded-2xl hover:from-red-600 hover:to-red-700 hover:scale-105 active:scale-95 transition-all duration-300 shadow-lg hover:shadow-xl touch-manipulation ring-2 ring-red-200 ring-offset-2"
+                  >
+                    <span className="flex items-center justify-center">
+                      <span className="mr-3 text-2xl">🗑️</span>
+                      Cancel My Order
+                    </span>
+                  </button>
+                )}
+              </div>
+            </div>
+          </>
+        )}
       </form>
 
       {/* Guest Drinks Section (admin only) */}
