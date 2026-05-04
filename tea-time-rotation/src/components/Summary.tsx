@@ -17,6 +17,14 @@ interface Order {
   users: User | User[] | null;
 }
 
+interface GuestOrder {
+  id: string;
+  drink_type: string;
+  sugar_level: string;
+  guest_label: string | null;
+  users: User | User[] | null;
+}
+
 function isUser(user: User | User[] | null): user is User {
   return user !== null && !Array.isArray(user) && typeof (user as User).name === 'string';
 }
@@ -31,6 +39,7 @@ interface SummaryProps {
 const Summary = ({ session, onNewSession }: SummaryProps) => {
   const { profile } = useAuth();
   const [orders, setOrders] = useState<Order[]>([]);
+  const [guestOrders, setGuestOrders] = useState<GuestOrder[]>([]);
   const [assignee, setAssignee] = useState<string | null>(null);
   const [summarizedBy, setSummarizedBy] = useState<string | null>(null);
   const [drinkPrices, setDrinkPrices] = useState<DrinkPrice[]>([]);
@@ -134,12 +143,17 @@ const Summary = ({ session, onNewSession }: SummaryProps) => {
 
   useEffect(() => {
     const fetchOrders = async () => {
-      const [ordersResult, pricesResult] = await Promise.all([
+      const [ordersResult, pricesResult, guestOrdersResult] = await Promise.all([
         supabase.from('orders').select('*, users(name)').eq('session_id', session.id),
         supabase.from('drink_prices').select('*'),
+        supabase
+          .from('guest_orders')
+          .select('id, drink_type, sugar_level, guest_label, users:billed_to(name)')
+          .eq('session_id', session.id),
       ]);
       if (ordersResult.data) setOrders(ordersResult.data as Order[]);
       if (pricesResult.data) setDrinkPrices(pricesResult.data as DrinkPrice[]);
+      if (guestOrdersResult.data) setGuestOrders(guestOrdersResult.data as unknown as GuestOrder[]);
     };
 
     const fetchAssignee = async () => {
@@ -169,7 +183,9 @@ const Summary = ({ session, onNewSession }: SummaryProps) => {
     }
   }, [session]);
 
-  const orderSummary = orders.reduce((acc, order) => {
+  const totalDrinks = orders.length + guestOrders.length;
+
+  const orderSummary = [...orders, ...guestOrders].reduce((acc, order) => {
     const drink = order.drink_type.trim();
     const sugar = order.sugar_level;
     if (!acc[drink]) {
@@ -182,16 +198,28 @@ const Summary = ({ session, onNewSession }: SummaryProps) => {
     return acc;
   }, {} as Record<string, Record<string, number>>);
 
-  const detailedSummary = orders.reduce((acc, order) => {
+  const detailedSummary: Record<string, string[]> = {};
+  for (const order of orders) {
     const key = `${order.drink_type.trim()} (${order.sugar_level})`;
-    if (!acc[key]) {
-      acc[key] = [];
-    }
+    if (!detailedSummary[key]) detailedSummary[key] = [];
     if (isUser(order.users)) {
-      acc[key].push(order.users.name);
+      detailedSummary[key].push(order.users.name);
     }
-    return acc;
-  }, {} as Record<string, string[]>);
+  }
+  for (const guestOrder of guestOrders) {
+    const key = `${guestOrder.drink_type.trim()} (${guestOrder.sugar_level})`;
+    if (!detailedSummary[key]) detailedSummary[key] = [];
+    const billedName = isUser(guestOrder.users) ? guestOrder.users.name : 'Unknown';
+    const label = guestOrder.guest_label
+      ? `${guestOrder.guest_label} 👤 (guest of ${billedName})`
+      : `${billedName} 👤 (guest)`;
+    detailedSummary[key].push(label);
+  }
+
+  const totalCost = drinkPrices.length > 0
+    ? orders.reduce((sum, o) => sum + resolvePrice(o.drink_type, o.sugar_level, drinkPrices), 0)
+      + guestOrders.reduce((sum, g) => sum + resolvePrice(g.drink_type, g.sugar_level, drinkPrices), 0)
+    : 0;
 
   const sortedDetailedEntries = Object.entries(detailedSummary).sort((a, b) => {
     const nameA = a[0].split(' (')[0].toLowerCase();
@@ -246,19 +274,24 @@ const Summary = ({ session, onNewSession }: SummaryProps) => {
               Order Analytics
             </h3>
             <div className="inline-flex items-center space-x-3 bg-gradient-to-r from-secondary-100 to-matcha-100 rounded-full px-6 py-2 flex-wrap gap-2 justify-center">
-              <span className="text-gray-700 font-semibold text-lg">Total Drinks: {orders.length}</span>
+              <span className="text-gray-700 font-semibold text-lg">Total Drinks: {totalDrinks}</span>
               {drinkPrices.length > 0 && (
                 <span className="text-green-700 font-semibold text-lg">
-                  · {formatCost(orders.reduce((sum, o) => sum + resolvePrice(o.drink_type, o.sugar_level, drinkPrices), 0))}
+                  · {formatCost(totalCost)}
                 </span>
               )}
             </div>
+            {guestOrders.length > 0 && (
+              <div className="text-sm text-purple-600 font-medium mt-2">
+                + {guestOrders.length} guest drink{guestOrders.length > 1 ? 's' : ''}
+              </div>
+            )}
           </div>
 
           <div className="space-y-4">
             {Object.entries(orderSummary).map(([drink, sugarLevels], index) => {
               const total = Object.values(sugarLevels).reduce((sum, count) => sum + count, 0);
-              const percentage = (total / orders.length) * 100;
+              const percentage = totalDrinks > 0 ? (total / totalDrinks) * 100 : 0;
               const sugarMap: Record<string, string> = {
                 'No Sugar': '🚫',
                 'Less': '🤏🏽',

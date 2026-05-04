@@ -1,7 +1,8 @@
 {
   "permissions": {
     "allow": [
-      "Read(//Users/sidharthsethu/.claude/projects/-Users-sidharthsethu-Code-Vibecoding-tea-time/memory/**)"
+      "Read(//Users/sidharthsethu/.claude/projects/-Users-sidharthsethu-Code-Vibecoding-tea-time/memory/**)",
+      "Bash(npm run *)"
     ]
   }
 }
