@@ -69,7 +69,7 @@ const OrderForm = ({ session, orders, users, guestOrders, onOrderUpdate }: Order
   const longPressTimerRef = useRef<NodeJS.Timeout | null>(null);
   const longPressTriggeredRef = useRef(false);
   const [showUserStats, setShowUserStats] = useState<User | null>(null);
-  const [isBulkMode, setIsBulkMode] = useState(false);
+  const [isBulkMode, setIsBulkMode] = useState(true);
   const [selectedUsers, setSelectedUsers] = useState<string[]>([]);
   const userSectionRef = useRef<HTMLDivElement>(null);
 

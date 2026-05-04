@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//Users/sidharthsethu/.claude/projects/-Users-sidharthsethu-Code-Vibecoding-tea-time/memory/**)"
+    ]
+  }
+}
