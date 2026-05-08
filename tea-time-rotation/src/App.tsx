@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { supabase } from './supabaseClient';
 import OrderForm from './components/OrderForm';
 import Summary from './components/Summary';
+import SessionHistory from './components/SessionHistory';
 import DangerZone from './components/DangerZone';
 import Modal from './components/ui/Modal';
 import { useModal } from './hooks/useModal';
@@ -71,6 +72,7 @@ function App() {
   const [topBuyers, setTopBuyers] = useState<LeaderboardEntry[]>([]);
   const [topDrinkers, setTopDrinkers] = useState<LeaderboardEntry[]>([]);
   const [showAssigneeModal, setShowAssigneeModal] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
   const [candidates, setCandidates] = useState<User[]>([]);
   const [selectedAssignee, setSelectedAssignee] = useState<string>('');
   const [currentUserStats, setCurrentUserStats] = useState<{
@@ -359,6 +361,7 @@ function App() {
     }
     const { data } = await supabase.from('sessions').insert([{ status: 'active' }]).select().single();
     setSession(data);
+    setShowHistory(false);
   };
 
   const handleUserAdded = async () => {
@@ -631,6 +634,13 @@ function App() {
                   <Summary session={session} onNewSession={handleStartSession} />
                 </div>
               )
+            ) : showHistory ? (
+              <div className="animate-fade-in">
+                <SessionHistory
+                  userId={profile?.id ?? ''}
+                  onBack={() => setShowHistory(false)}
+                />
+              </div>
             ) : (
               <div className="text-center space-y-6 sm:space-y-8 animate-fade-in">
                 {/* Enhanced Welcome Section */}
@@ -666,16 +676,28 @@ function App() {
                     </span>
                     <div className="absolute inset-0 bg-gradient-to-r from-green-400 to-green-500 transform scale-x-0 group-hover:scale-x-100 transition-transform duration-300 origin-left"></div>
                   </button>
-                  <button
-                    onClick={handleShowLastSession}
-                    className="btn-primary text-lg sm:text-xl font-bold px-6 sm:px-8 py-3 sm:py-4 group relative overflow-hidden rounded-xl sm:rounded-2xl w-full max-w-xs sm:max-w-sm"
-                  >
-                    <span className="relative z-10 flex items-center justify-center">
-                      <span className="mr-3 text-xl sm:text-2xl group-hover:animate-bounce">🧐</span>
-                      <span className="text-base sm:text-lg">Show Last Tea Time</span>
-                    </span>
-                    <div className="absolute inset-0 bg-gradient-to-r from-blue-400 to-blue-500 transform scale-x-0 group-hover:scale-x-100 transition-transform duration-300 origin-left"></div>
-                  </button>
+                  <div className="flex gap-3 w-full max-w-xs sm:max-w-sm">
+                    <button
+                      onClick={handleShowLastSession}
+                      className="btn-primary flex-1 text-base sm:text-lg font-bold px-3 sm:px-4 py-3 sm:py-4 group relative overflow-hidden rounded-xl sm:rounded-2xl"
+                    >
+                      <span className="relative z-10 flex items-center justify-center">
+                        <span className="mr-2 text-lg sm:text-xl group-hover:animate-bounce">🧐</span>
+                        <span className="text-sm sm:text-base">Last Tea Time</span>
+                      </span>
+                      <div className="absolute inset-0 bg-gradient-to-r from-blue-400 to-blue-500 transform scale-x-0 group-hover:scale-x-100 transition-transform duration-300 origin-left"></div>
+                    </button>
+                    <button
+                      onClick={() => setShowHistory(true)}
+                      className="btn-primary flex-1 text-base sm:text-lg font-bold px-3 sm:px-4 py-3 sm:py-4 group relative overflow-hidden rounded-xl sm:rounded-2xl"
+                    >
+                      <span className="relative z-10 flex items-center justify-center">
+                        <span className="mr-2 text-lg sm:text-xl group-hover:animate-bounce">📓</span>
+                        <span className="text-sm sm:text-base">Your Journal</span>
+                      </span>
+                      <div className="absolute inset-0 bg-gradient-to-r from-purple-400 to-purple-500 transform scale-x-0 group-hover:scale-x-100 transition-transform duration-300 origin-left"></div>
+                    </button>
+                  </div>
                 </div>
               </div>
             )}
