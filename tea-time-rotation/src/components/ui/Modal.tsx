@@ -1,4 +1,5 @@
 import { useState, useEffect, type ReactNode } from 'react';
+import ModalPortal from './ModalPortal';
 
 interface ModalProps {
   isOpen: boolean;
@@ -64,6 +65,7 @@ const Modal = ({
   };
 
   return (
+    <ModalPortal>
     <div className={`fixed inset-0 z-50 flex items-center justify-center p-4 transition-all duration-300 ${
       isOpen ? 'opacity-100' : 'opacity-0'
     }`}>
@@ -113,6 +115,7 @@ const Modal = ({
         </div>
       </div>
     </div>
+    </ModalPortal>
   );
 };
 

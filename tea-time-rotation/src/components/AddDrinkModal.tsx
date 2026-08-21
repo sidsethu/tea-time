@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { supabase } from '../supabaseClient';
 import { useAuth } from '../hooks/useAuth';
+import ModalPortal from './ui/ModalPortal';
 
 interface AddDrinkModalProps {
   isOpen: boolean;
@@ -69,6 +70,7 @@ const AddDrinkModal = ({ isOpen, onClose, onDrinkAdded }: AddDrinkModalProps) =>
   };
 
   return (
+    <ModalPortal>
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 transition-all duration-300 opacity-100">
       <div className="absolute inset-0 bg-black opacity-50" onClick={onClose} />
       <div className="relative bg-white rounded-2xl shadow-2xl max-w-sm w-full mx-4 transform transition-all duration-300 scale-100 translate-y-0">
@@ -133,6 +135,7 @@ const AddDrinkModal = ({ isOpen, onClose, onDrinkAdded }: AddDrinkModalProps) =>
         </div>
       </div>
     </div>
+    </ModalPortal>
   );
 };
 

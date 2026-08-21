@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { supabase } from '../supabaseClient';
 import { useAuth } from '../hooks/useAuth';
 import type { Drink } from '../utils';
+import ModalPortal from './ui/ModalPortal';
 
 interface DrinkPrice {
   id: string;
@@ -87,6 +88,7 @@ const ManagePricesModal = ({ isOpen, onClose }: ManagePricesModalProps) => {
   };
 
   return (
+    <ModalPortal>
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 transition-all duration-300 opacity-100">
       <div className="absolute inset-0 bg-black opacity-50" onClick={onClose} />
       <div className="relative bg-white rounded-2xl shadow-2xl max-w-lg w-full mx-4 transform transition-all duration-300 scale-100 translate-y-0 max-h-[90vh] flex flex-col">
@@ -184,6 +186,7 @@ const ManagePricesModal = ({ isOpen, onClose }: ManagePricesModalProps) => {
         </div>
       </div>
     </div>
+    </ModalPortal>
   );
 };
 

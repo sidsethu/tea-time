@@ -5,6 +5,7 @@ import Summary from './components/Summary';
 import SessionHistory from './components/SessionHistory';
 import DangerZone from './components/DangerZone';
 import Modal from './components/ui/Modal';
+import ModalPortal from './components/ui/ModalPortal';
 import { useModal } from './hooks/useModal';
 import AddUserModal from './components/AddUserModal';
 import { useAddUserModal } from './hooks/useAddUserModal';
@@ -26,6 +27,7 @@ interface Order {
   user_id: string;
   drink_type: string;
   sugar_level: string;
+  is_excused: boolean;
 }
 
 interface GuestOrder {
@@ -75,6 +77,7 @@ function App() {
   const [showHistory, setShowHistory] = useState(false);
   const [candidates, setCandidates] = useState<User[]>([]);
   const [selectedAssignee, setSelectedAssignee] = useState<string>('');
+  const [manualSelect, setManualSelect] = useState(false);
   const [currentUserStats, setCurrentUserStats] = useState<{
     userData: LeaderboardEntry;
     sponsorRank: number;
@@ -354,6 +357,15 @@ function App() {
     return `${Math.floor(diffDays / 30)} months ago`;
   };
 
+  // Active users with a real (non-excused) order this session — mirrors the
+  // eligibility set in supabase/functions/summarize/index.ts, so any selection
+  // from this list passes the edge function's Phase 2 validation.
+  const sessionParticipants = orders
+    .filter((o) => !o.is_excused)
+    .map((o) => users.find((u) => u.id === o.user_id))
+    .filter((u): u is User => !!u && u.isActive)
+    .sort((a, b) => a.name.localeCompare(b.name));
+
   const handleStartSession = async () => {
     if (!profile?.isActive) {
       showError('Access Denied', 'We had a good time with you, but sadly, now you\'re outside our walled tea garden.');
@@ -413,6 +425,7 @@ function App() {
           if (data?.requiresConfirmation && data?.candidates) {
             setCandidates(data.candidates);
             setSelectedAssignee(data.candidates[0]?.id || '');
+            setManualSelect(false);
             setShowAssigneeModal(true);
           }
         } catch (err) {
@@ -475,6 +488,7 @@ function App() {
     setShowAssigneeModal(false);
     setCandidates([]);
     setSelectedAssignee('');
+    setManualSelect(false);
   };
 
   const handleAbandonSession = async () => {
@@ -796,6 +810,7 @@ function App() {
 
       {/* Assignee Selection Modal */}
       {showAssigneeModal && (
+        <ModalPortal>
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-fade-in">
           <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full animate-scale-in border-2 border-primary-200">
             {/* Modal Header */}
@@ -809,71 +824,94 @@ function App() {
             {/* Modal Body */}
             <div className="p-6 space-y-4 bg-white">
               <p className="text-gray-800 text-base font-semibold mb-4">
-                Select who should get tea this time:
+                {manualSelect ? 'Pick anyone from this session:' : 'Select who should get tea this time:'}
               </p>
 
-              <div className="space-y-3">
-                {candidates.map((candidate, index) => (
-                  <label
-                    key={candidate.id}
-                    className={`block cursor-pointer transition-all duration-200 ${
-                      selectedAssignee === candidate.id
-                        ? 'bg-primary-200 border-primary-600 shadow-md'
-                        : 'bg-white border-gray-400 hover:border-primary-500 hover:bg-primary-100'
-                    } border-2 rounded-xl p-4`}
-                  >
-                    <div className="flex items-center">
-                      <input
-                        type="radio"
-                        name="assignee"
-                        value={candidate.id}
-                        checked={selectedAssignee === candidate.id}
-                        onChange={(e) => setSelectedAssignee(e.target.value)}
-                        className="w-5 h-5 text-primary-500 focus:ring-primary-500 accent-primary-500"
-                      />
-                      <div className="ml-4 flex-1">
-                        <div className="flex items-center gap-3 flex-wrap">
-                          <span className="font-bold text-lg text-gray-900">
-                            {candidate.name}
-                          </span>
-                          {index === 0 && (
-                            <span style={{backgroundColor: '#f5862d'}} className="text-white text-xs font-bold px-3 py-1 rounded-full inline-flex items-center gap-1 whitespace-nowrap">
-                              <span>⭐</span>
-                              <span>Recommended</span>
+              <div className={`space-y-3 ${manualSelect ? 'max-h-[45vh] overflow-y-auto' : ''}`}>
+                {(manualSelect ? sessionParticipants : candidates).length === 0 ? (
+                  <p className="text-sm text-gray-500">No participants in this session yet.</p>
+                ) : (
+                  (manualSelect ? sessionParticipants : candidates).map((person, index) => (
+                    <label
+                      key={person.id}
+                      className={`block cursor-pointer transition-all duration-200 ${
+                        selectedAssignee === person.id
+                          ? 'bg-primary-200 border-primary-600 shadow-md'
+                          : 'bg-white border-gray-400 hover:border-primary-500 hover:bg-primary-100'
+                      } border-2 rounded-xl p-4`}
+                    >
+                      <div className="flex items-center">
+                        <input
+                          type="radio"
+                          name="assignee"
+                          value={person.id}
+                          checked={selectedAssignee === person.id}
+                          onChange={(e) => setSelectedAssignee(e.target.value)}
+                          className="w-5 h-5 text-primary-500 focus:ring-primary-500 accent-primary-500"
+                        />
+                        <div className="ml-4 flex-1">
+                          <div className="flex items-center gap-3 flex-wrap">
+                            <span className="font-bold text-lg text-gray-900">
+                              {person.name}
                             </span>
-                          )}
-                        </div>
-                        <div className="text-sm text-gray-900 mt-2 flex items-center flex-wrap gap-2">
-                          <span className="font-medium">Ratio: {calculateRatio(candidate)}</span>
-                          <span className="text-gray-500">•</span>
-                          <span className="font-medium">Last: {formatLastAssigned(candidate.last_assigned_at)}</span>
+                            {(manualSelect ? person.id === candidates[0]?.id : index === 0) && (
+                              <span style={{backgroundColor: '#f5862d'}} className="text-white text-xs font-bold px-3 py-1 rounded-full inline-flex items-center gap-1 whitespace-nowrap">
+                                <span>⭐</span>
+                                <span>Recommended</span>
+                              </span>
+                            )}
+                          </div>
+                          <div className="text-sm text-gray-900 mt-2 flex items-center flex-wrap gap-2">
+                            <span className="font-medium">Ratio: {calculateRatio(person)}</span>
+                            <span className="text-gray-500">•</span>
+                            <span className="font-medium">Last: {formatLastAssigned(person.last_assigned_at)}</span>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  </label>
-                ))}
+                    </label>
+                  ))
+                )}
               </div>
             </div>
 
             {/* Modal Footer */}
-            <div className="p-6 flex flex-col sm:flex-row gap-3 bg-white rounded-b-2xl">
+            <div className="p-6 flex flex-col gap-3 bg-white rounded-b-2xl">
               <button
                 onClick={handleConfirmAssignment}
                 style={{backgroundColor: '#f5862d'}}
-                className="flex-1 hover:bg-primary-600 text-white font-bold py-4 px-6 rounded-xl transition-all duration-200 shadow-lg"
+                className="w-full hover:bg-primary-600 text-white font-bold py-4 px-6 rounded-xl transition-all duration-200 shadow-lg"
               >
                 ✓ Confirm Assignment
               </button>
-              <button
-                onClick={handleCancelAssigneeSelection}
-                style={{backgroundColor: '#9ca3af'}}
-                className="flex-1 hover:bg-gray-500 text-white font-bold py-4 px-6 rounded-xl transition-all duration-200 shadow-md"
-              >
-                Cancel
-              </button>
+              <div className="flex flex-col sm:flex-row gap-3">
+                <button
+                  onClick={() => {
+                    if (manualSelect) {
+                      if (!candidates.some((c) => c.id === selectedAssignee)) {
+                        setSelectedAssignee(candidates[0]?.id || '');
+                      }
+                      setManualSelect(false);
+                    } else {
+                      setManualSelect(true);
+                    }
+                  }}
+                  style={{backgroundColor: '#3b82f6'}}
+                  className="flex-1 hover:bg-blue-600 text-white font-bold py-4 px-6 rounded-xl transition-all duration-200 shadow-md"
+                >
+                  {manualSelect ? '← Back to Recommendations' : '👤 Select Manually'}
+                </button>
+                <button
+                  onClick={handleCancelAssigneeSelection}
+                  style={{backgroundColor: '#9ca3af'}}
+                  className="flex-1 hover:bg-gray-500 text-white font-bold py-4 px-6 rounded-xl transition-all duration-200 shadow-md"
+                >
+                  Cancel
+                </button>
+              </div>
             </div>
           </div>
         </div>
+        </ModalPortal>
       )}
     </div>
   );

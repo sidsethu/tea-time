@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { supabase } from '../supabaseClient';
 import Modal from './ui/Modal';
+import ModalPortal from './ui/ModalPortal';
 import { useModal } from '../hooks/useModal';
 import AddUserModal from './AddUserModal';
 import { useAddUserModal } from '../hooks/useAddUserModal';
@@ -158,7 +159,9 @@ const OrderForm = ({ session, orders, users, guestOrders, onOrderUpdate }: Order
   };
 
   const submittedUsers = orders.map((order) => order.user_id);
-  const totalUsers = users.length;
+  const activeUsers = users.filter((u) => u.isActive);
+  const totalUsers = activeUsers.length;
+  const submittedCount = activeUsers.filter((u) => submittedUsers.includes(u.id)).length;
   const hasSubmitted = submittedUsers.includes(selectedUser);
 
   const handleUserSelect = (userId: string) => {
@@ -470,7 +473,7 @@ const OrderForm = ({ session, orders, users, guestOrders, onOrderUpdate }: Order
                 strokeWidth="8"
                 fill="none"
                 strokeLinecap="round"
-                strokeDasharray={`${(submittedUsers.length / totalUsers) * 251.2} 251.2`}
+                strokeDasharray={`${(totalUsers > 0 ? submittedCount / totalUsers : 0) * 251.2} 251.2`}
                 className="transition-all duration-700 ease-out"
               />
               <defs>
@@ -482,7 +485,7 @@ const OrderForm = ({ session, orders, users, guestOrders, onOrderUpdate }: Order
             </svg>
             <div className="absolute inset-0 flex items-center justify-center">
               <span className="text-2xl font-bold text-gray-800">
-                {submittedUsers.length}/{totalUsers}
+                {submittedCount}/{totalUsers}
               </span>
             </div>
           </div>
@@ -491,13 +494,13 @@ const OrderForm = ({ session, orders, users, guestOrders, onOrderUpdate }: Order
         {/* Order Status Text */}
         <div className="text-center">
           <div className="text-lg sm:text-xl font-bold text-gray-800 mb-1">
-            {submittedUsers.length === totalUsers ? '🎉 Everyone has submitted!' : 
-             submittedUsers.length > totalUsers / 2 ? '🔥 Most people have submitted' :
-             submittedUsers.length > 0 ? '⏳ Waiting for more submissions...' :
+            {totalUsers > 0 && submittedCount === totalUsers ? '🎉 Everyone has submitted!' : 
+             submittedCount > totalUsers / 2 ? '🔥 Most people have submitted' :
+             submittedCount > 0 ? '⏳ Waiting for more submissions...' :
              '📝 No orders yet'}
           </div>
           <div className="text-sm sm:text-base text-gray-600">
-            {submittedUsers.length} of {totalUsers} people have submitted their orders
+            {submittedCount} of {totalUsers} people have submitted their orders
           </div>
           {guestOrders.length > 0 && (
             <div className="text-sm text-purple-600 font-medium">
@@ -1176,6 +1179,7 @@ const OrderForm = ({ session, orders, users, guestOrders, onOrderUpdate }: Order
 
       {/* User Stats Modal */}
       {showUserStats && (
+        <ModalPortal>
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4" onClick={() => setShowUserStats(null)}>
           <div className="bg-white rounded-2xl shadow-2xl p-6 max-w-sm w-full animate-slide-up" onClick={(e) => e.stopPropagation()}>
             <div className="text-center mb-6">
@@ -1205,6 +1209,7 @@ const OrderForm = ({ session, orders, users, guestOrders, onOrderUpdate }: Order
             </button>
           </div>
         </div>
+        </ModalPortal>
       )}
     </div>
   );

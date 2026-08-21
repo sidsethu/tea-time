@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import ModalPortal from './ModalPortal';
 
 interface PinModalProps {
   isOpen: boolean;
@@ -42,6 +43,7 @@ const PinModal = ({ isOpen, onClose, onConfirm, title, message, correctPin }: Pi
   if (!isVisible) return null;
 
   return (
+    <ModalPortal>
     <div className={`fixed inset-0 z-50 flex items-center justify-center p-4 transition-all duration-300 ${isOpen ? 'opacity-100' : 'opacity-0'}`}>
       <div className={`absolute inset-0 bg-black transition-opacity duration-300 ${isOpen ? 'opacity-50' : 'opacity-0'}`} onClick={onClose} />
       <div className={`relative bg-white rounded-2xl shadow-2xl max-w-sm w-full mx-4 transform transition-all duration-300 ${isOpen ? 'scale-100 translate-y-0' : 'scale-95 translate-y-4'}`}>
@@ -77,6 +79,7 @@ const PinModal = ({ isOpen, onClose, onConfirm, title, message, correctPin }: Pi
         </div>
       </div>
     </div>
+    </ModalPortal>
   );
 };
 
